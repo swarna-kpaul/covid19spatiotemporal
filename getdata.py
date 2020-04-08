@@ -224,6 +224,73 @@ def fetch_italy_patientdata(tgtdir):
 	final_Data.to_csv(tgtdir+'Italy_Covid_Patient.csv', index=False)
 	print(' Italy Patient Data Created under Directory :' + tgtdir)
 
+
+def fetch_india_patientdata(tgtdir):
+	India_Raw_Data = requests.get('https://api.covid19india.org/raw_data.json').json()['raw_data']
+	India_full_Data = pd.DataFrame()
+	for eachRecord in India_Raw_Data:
+		each_record_df = pd.DataFrame(eachRecord, index=[0])
+		India_full_Data = India_full_Data.append(each_record_df)
+
+	India_full_Data = India_full_Data[India_full_Data['detectedstate'] != '']
+	India_full_Data['No of Pat'] = 1
+	India_full_Data = ps.sqldf(
+		''' select detecteddistrict,detectedstate,sum("No of Pat") as "No of Pat" from India_full_Data group by detecteddistrict,detectedstate''',
+		locals())
+
+	lat_long_df = pd.read_csv('data/India_District_Wise_Population_Data_with_Lat_Long.csv')
+	lat_long_df['detecteddistrict'] = lat_long_df['detecteddistrict'].apply(lambda x: x.strip())
+	lat_long_df['detectedstate'] = lat_long_df['detectedstate'].apply(lambda x: x.strip())
+
+	India_Full_Merge_Data = ps.sqldf(
+		''' select a.*, ifnull(b.population,0) as population,ifnull(b.long,0) as long,ifnull(b.lat,0) as lat from India_full_Data a left join lat_long_df b on lower(a.detecteddistrict) = lower(b.detecteddistrict) and lower(a.detectedstate) = lower(b.detectedstate) order by a."No of Pat" desc''',
+		locals())
+	unique_States = India_Full_Merge_Data['detectedstate'].unique()
+	India_Final_Merge_Data = pd.DataFrame()
+	for eachState in unique_States:
+		print(eachState)
+		state_data_valid = India_Full_Merge_Data[
+			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['population'] != 0)]
+		valid_districts = list(state_data_valid['detecteddistrict'].unique())
+		All_State_District = lat_long_df[lat_long_df['detectedstate'] == eachState]
+		All_Districts = list(All_State_District['detecteddistrict'].unique())
+		missing_districts = list(set(All_Districts) - set(valid_districts))
+		number_of_Missing_district = len(missing_districts)
+		state_invalid_data = India_Full_Merge_Data[
+			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['population'] == 0)]
+		Total_untagged_Patients = sum(state_invalid_data['No of Pat'])
+		distribution_df = pd.DataFrame()
+
+		if Total_untagged_Patients != 0:
+			if Total_untagged_Patients < number_of_Missing_district:
+				state_data_valid.iloc[0, 2] = state_data_valid.iloc[0, 2] + Total_untagged_Patients
+
+			else:
+				Patient_distribution = int(round(Total_untagged_Patients / number_of_Missing_district))
+				for eachdistrict in missing_districts:
+					district_dist_df = {}
+					lat_long_df_for_pericular_dist = lat_long_df[
+						(lat_long_df['detectedstate'] == eachState) & (lat_long_df['detecteddistrict'] == eachdistrict)]
+					district_dist_df['detectedstate'] = [eachState]
+					district_dist_df['detecteddistrict'] = [eachdistrict]
+					district_dist_df['No of Pat'] = [Patient_distribution]
+					district_dist_df['population'] = [lat_long_df_for_pericular_dist.iloc[0, 2]]
+					district_dist_df['long'] = [lat_long_df_for_pericular_dist.iloc[0, 3]]
+					district_dist_df['lat'] = [lat_long_df_for_pericular_dist.iloc[0, 4]]
+					distribution_df = distribution_df.append(pd.DataFrame.from_dict(district_dist_df))
+
+		if distribution_df.empty == True:
+			full_State_df = state_data_valid
+		else:
+			full_State_df = state_data_valid.append(distribution_df)
+
+		India_Final_Merge_Data = India_Final_Merge_Data.append(full_State_df)
+
+	India_Final_Merge_Data.columns = ['no_pat', 'District', 'State', 'lat', 'long', 'population']
+	India_Final_Merge_Data['no_pat'] = India_Final_Merge_Data.groupby(['State','District'])['no_pat'].apply(lambda x: x.cummax())
+	India_Final_Merge_Data.to_csv(tgtdir + 'India_Covid_Patient.csv', index=False)
+	print(' India Patient Data Created under Directory :' + tgtdir)
+
 if __name__ == '__main__':
 	getCountry = input('Please enter the country name for which you want to prepare the data : (USA, Italy, China)')
 	getDirectory = input('Please mention the directory path you want save file:')
@@ -237,6 +304,9 @@ if __name__ == '__main__':
 
 	elif lower(getCountry) == 'china':
 		fetch_china_patientdata(directory)
+
+	elif lower(getCountry) == 'india':
+		fetch_india_patientdata(directory)
 
 else:
 	print('All Get Data Modules imported Successfully!!')
