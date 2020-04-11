@@ -173,24 +173,24 @@ def fetch_italy_patientdata(tgtdir):
 	latest_data = ps.sqldf(
 		''' select  Date(data) as Date,denominazione_regione as "Region Name",denominazione_provincia as "Province Name", lat, long,totale_casi as "no_pat" from latest_data ''',
 		locals())
-	# latest_data_Area_Regions = latest_data[['Region Name', 'Province Name']].drop_duplicates()
-	# Unique_Provinces = latest_data_Area_Regions['Province Name'].unique()
-	# lat_long_df = pd.DataFrame()
-	# for i in range(len(Unique_Provinces)):
-	# 	if Unique_Provinces[i] != 'In fase di definizione/aggiornamento':
-	# 		each_lat_long_df = {}
-	# 		each_lat_long_df['Province Name'] = [Unique_Provinces[i]]
-	# 		Cordinates = getProvinceBoundaryBox(Unique_Provinces[i])
-	# 		shapelat = (Cordinates[1] + Cordinates[3]) / 2
-	# 		shapelong = (Cordinates[0]+ Cordinates[2]) / 2
-	# 		each_lat_long_df['lat'] = [shapelat]
-	# 		each_lat_long_df['long'] = [shapelong]
-	# 		each_lat_long_df = pd.DataFrame.from_dict(each_lat_long_df)
-	# 		lat_long_df = lat_long_df.append(each_lat_long_df)
-	#
-	# full_data = ps.sqldf(
-	# 	''' select a.*, b.* from latest_data a left join lat_long_df b on a."Province Name" = b."Province Name" ''',
-	# 	locals())
+	latest_data_Area_Regions = latest_data[['Region Name', 'Province Name']].drop_duplicates()
+	Unique_Provinces = latest_data_Area_Regions['Province Name'].unique()
+	lat_long_df = pd.DataFrame()
+	for i in range(len(Unique_Provinces)):
+		if Unique_Provinces[i] != 'In fase di definizione/aggiornamento':
+			each_lat_long_df = {}
+			each_lat_long_df['Province Name'] = [Unique_Provinces[i]]
+			Cordinates = getProvinceBoundaryBox(Unique_Provinces[i])
+			shapelat = (Cordinates[1] + Cordinates[3]) / 2
+			shapelong = (Cordinates[0]+ Cordinates[2]) / 2
+			each_lat_long_df['lat'] = [shapelat]
+			each_lat_long_df['long'] = [shapelong]
+			each_lat_long_df = pd.DataFrame.from_dict(each_lat_long_df)
+			lat_long_df = lat_long_df.append(each_lat_long_df)
+	
+	full_data = ps.sqldf(
+		''' select a.*, b.* from latest_data a left join lat_long_df b on a."Province Name" = b."Province Name" ''',
+		locals())
 	full_data = latest_data
 	Dates_in_Data = full_data['Date'].unique()
 	Regions_in_Data = full_data['Region Name'].unique()
@@ -310,4 +310,3 @@ if __name__ == '__main__':
 
 else:
 	print('All Get Data Modules imported Successfully!!')
-
