@@ -71,49 +71,20 @@ def get_The_Area_Grid(latlongrange,latstep,longstep,margin,pixelsize, counties):
 		group by a.grid,a.pixno,a.minlong,a.maxlong,a.minlat,a.maxlat""", locals())
 	return Area_pixel_Grid
 
-def frames_df(df_pop_pat,Area_df):
-	
-	days = ps.sqldf("select distinct data_date from df_pop_pat order by 1",locals())
-	days['day'] = np.arange(len(days))
-	Area_df['key'] = 1
-	days['key'] = 1
-	Area_day_df =Area_df.merge(days, on='key')
-	frames_grid = pd.DataFrame()
-	for grid in set(Area_df['grid']):
-		Area_day_df_grid = Area_day_df[Area_day_df['grid']==grid]
-		df_pop_pat_grid = df_pop_pat[(df_pop_pat['lat'] >= np.min(Area_day_df_grid['minlat'])) & (df_pop_pat['lat'] < np.max(Area_day_df_grid['maxlat']))
-									 & (df_pop_pat['long'] >= np.min(Area_day_df_grid['minlong'])) & (df_pop_pat['long'] < np.max(Area_day_df_grid['maxlong']))]
-		if len(df_pop_pat_grid) == 0:
-			continue
-		frames = ps.sqldf("""select a.grid,a.day,a.pixno,a.data_date,sum(ifnull(b.no_pat,0)) no_pat,sum(ifnull(a.pop,0))*0.6 pop, 
-					sum(ifnull(a.pop,0))*0.6 - sum(ifnull(b.no_pat,0)) sus_pop, 
-					max(ifnull(b.lat,0)) lat, min(ifnull(b.long,0)) long
-					from Area_day_df_grid a left outer join df_pop_pat_grid b on a.data_date = b.data_date and
-					b.lat between a.minlat and a.maxlat and b.long between a.minlong and a.maxlong
-					group by a.grid,a.day,a.pixno""",locals())
-		#frames['no_pat_sum'] = frames.groupby(['grid','pixno'])['no_pat'].apply(lambda x: x.cumsum())
-		frames['pop'] = frames.groupby(['grid','pixno'])['pop'].transform('max')
-		frames['pixel'] = np.array((np.log(frames[['no_pat']].values.astype(float)+1)/np.log(frames[['pop']].values.astype(float)+2)))
-		if np.sum(df_pop_pat_grid['no_pat']) != np.sum(frames['no_pat']):
-			print("failure", grid)
-			break
-		frames_grid = frames_grid.append(frames)
-	return frames_grid
-
 
 def validate_frames(frames_grid,df_pop_pat,margin):
 	days = np.max(frames_grid['day'])+1
 	pixno = np.int(np.max(frames_grid['pixno']))
 	pix = np.int(math.sqrt(pixno))
 	print(pix)
-	print(np.sum(frames_grid['no_pat']),np.sum(df_pop_pat['no_pat']),len(frames_grid),
+	print(np.sum(frames_grid['new_pat']),np.sum(df_pop_pat['new_pat']),len(frames_grid),
 		 len(set(frames_grid['grid'])),len(frames_grid)/(len(set(frames_grid['grid']))*days) )
 	a = np.reshape(range(1,pixno+1),(pix,pix))
 	a=np.flip(a,0)
 	start = np.int(margin)
 	end = np.int(pix-margin)
 	a=a[start:end,start:end].flatten()
-	print(np.sum(frames_grid[frames_grid['pixno'].isin(a)]['no_pat']))
+	print(np.sum(frames_grid[frames_grid['pixno'].isin(a)]['new_pat']))
 
 #Area_df = get_The_Area_Grid((23, 49,-124.5, -66.31),24,40)
 import matplotlib.pyplot as plt
@@ -139,8 +110,36 @@ def prep_pop_image(Area_df):
 		popframes.append(frame)
 	popframes = np.array(popframes)
 	return popframes
-			
-from scipy import ndimage
+
+def frames_df(df_pop_pat,Area_df):
+	days = ps.sqldf("select distinct data_date from df_pop_pat order by 1",locals())
+	days['day'] = np.arange(len(days))
+	Area_df['key'] = 1
+	days['key'] = 1
+	Area_day_df =Area_df.merge(days, on='key')
+	frames_grid = pd.DataFrame()
+	for grid in set(Area_df['grid']):
+		Area_day_df_grid = Area_day_df[Area_day_df['grid']==grid]
+		df_pop_pat_grid = df_pop_pat[(df_pop_pat['lat'] >= np.min(Area_day_df_grid['minlat'])) & (df_pop_pat['lat'] < np.max(Area_day_df_grid['maxlat']))
+									 & (df_pop_pat['long'] >= np.min(Area_day_df_grid['minlong'])) & (df_pop_pat['long'] < np.max(Area_day_df_grid['maxlong']))]
+		if len(df_pop_pat_grid) == 0:
+			continue
+		frames = ps.sqldf("""select a.grid,a.day,a.pixno,a.data_date,sum(ifnull(b.no_pat,0)) no_pat,sum(ifnull(a.pop,0))*0.6 pop, sum(ifnull(b.new_pat,0)) new_pat,
+					sum(ifnull(a.pop,0))*0.6 - sum(ifnull(b.no_pat,0)) sus_pop, 
+					max(ifnull(b.lat,0)) lat, min(ifnull(b.long,0)) long
+					from Area_day_df_grid a left outer join df_pop_pat_grid b on a.data_date = b.data_date and
+					b.lat between a.minlat and a.maxlat and b.long between a.minlong and a.maxlong
+					group by a.grid,a.day,a.pixno""",locals())
+		frames['pop'] = frames.groupby(['grid','pixno'])['pop'].transform('max')
+		maxpop = max(frames['pop'])	
+		#frames['pixel'] = np.array(frames[['no_pat']].values.astype(float)/(frames[['pop']].values.astype(float)+1))
+		frames['pixel'] = np.array((np.log(frames[['new_pat']].values.astype(float)+1)/np.log(frames[['sus_pop']].values.astype(float)+2)))
+		if np.sum(df_pop_pat_grid['no_pat']) != np.sum(frames['no_pat']):
+			print("failure", grid)
+			break
+		frames_grid = frames_grid.append(frames)
+	return frames_grid
+
 def prep_image(frames_grid,minframe,testspan=4,channel = 1, extframes = []):
 	days = np.max(frames_grid['day'])
 	pixno = np.int(np.max(frames_grid['pixno']))
@@ -160,18 +159,23 @@ def prep_image(frames_grid,minframe,testspan=4,channel = 1, extframes = []):
 			frame = np.array(frames['pixel']).reshape(pix,pix)
 			#popframes = np.log((np.array(frames['sus_pop'])+1)*(np.array(frames['no_pat'])+1))/np.log((maxpop**2)/4)
 			popframes = np.log((np.array(frames['pop'])+1))/np.log(maxpop)
+			#popframes = np.array(frames['pop'])/maxpop
 			popframes = popframes.reshape(pix,pix)
-			if sum(sum(frame)) == 0:
-				continue
+			#if sum(sum(frame)) == 0:
+			#	continue
 			frame = np.flip(frame,0)
 			popframes = np.flip(popframes,0)
 			frame[frame<0] = 0			
-			#frame += 0.1
 			if np.max(frame) > 1:
 				frame /= np.max(frame)
 			frame = frame[::,::,np.newaxis]
 			if channel > 1:
 				frame = np.concatenate((frame,popframes[::,::,np.newaxis]),axis = 2)
+			################# add any external frames
+			for newcol in extframes:
+				newframe = np.array(frames[newcol])
+				newframe = newframe.reshape(pix,pix)
+				frame = np.concatenate((frame,newframe[::,::,np.newaxis]),axis = 2)
 			train_samp.append(frame)
 			frame = frames_grid[(frames_grid['grid']==grid) & (frames_grid['day']==day)].sort_values(['pixno'])
 			frame = np.array(frame['pixel']).reshape(pix,pix)
@@ -182,23 +186,33 @@ def prep_image(frames_grid,minframe,testspan=4,channel = 1, extframes = []):
 			output_samp.append(frame)
 		train_samp = np.array(train_samp)
 		output_samp = np.array(output_samp)
-		if train_samp.shape[0]-testspan < minframe:
+		if train_samp.shape[0]< minframe:
 			continue  
-		#testspan= 4 #np.int(minframe/2)
-		test.append(np.flip(train_samp[testspan-1:minframe+testspan-1,::,::,::],0))
+		test.append(np.flip(train_samp[testspan:minframe+testspan,::,::,::],0))
+		#test.append(np.flip(train_samp[testspan-1:,::,::,::],0))
 		testoutput.append(np.flip(output_samp[:testspan,::,::,::],0))
 		test_gridday[testseq] = (grid,testspan)
 		testseq += 1
 		######################create training records
-		for i in range(testspan-1,train_samp.shape[0]-minframe):
+		for i in range(testspan,train_samp.shape[0]-minframe):
 			train.append(np.flip(train_samp[i:i+minframe,::,::,::],0))
 			output.append(np.flip(output_samp[i:i+minframe,::,::,::],0))
-		#for i in range(np.int((train_samp.shape[0]-testspan+1)/minframe)):
-		#	train.append(np.flip(train_samp[i*minframe:(i+1)*minframe,::,::,::],0))
-		#	output.append(np.flip(output_samp[i*minframe:(i+1)*minframe,::,::,::],0))
 	test = np.array(test)
 	testoutput = np.array(testoutput) 
 
 	train = np.array(train)
 	output = np.array(output) 
 	return(train,output,test,testoutput,test_gridday)
+	
+def prep_us_data(M,N,frames_grid,minframe = 10,channel = 2, testspan = 8):
+	gridframe = np.flip(np.array(range(1,M*N+1)).reshape(M,N),0)
+	g1 = gridframe[0:np.int(M/2),0:np.int(N/2)].flatten()
+	g2 = gridframe[np.int(M/2):M,0:np.int(N/2)].flatten()
+	g3 = gridframe[0:np.int(M/2),np.int(N/2):N].flatten()
+	g4 = gridframe[np.int(M/2):M,np.int(N/2):N].flatten()
+	frames_grid_group = [frames_grid[frames_grid.grid.isin(g1)],frames_grid[frames_grid.grid.isin(g2)],frames_grid[frames_grid.grid.isin(g3)],frames_grid[frames_grid.grid.isin(g4)]]
+	outdata = []
+	for fg in frames_grid_group:
+		(train,output,test,testoutput,test_gridday) = prep_image(fg,minframe=minframe,channel =channel, testspan=testspan)
+		outdata.append((train,output,test,testoutput,test_gridday,fg))
+	return outdata
