@@ -9,6 +9,8 @@ import requests
 import json
 
 
+## getProvinceBoundaryBox function is to get the cordinate details from Mapbox API for ITALY
+## Parameter Needed - Province Name
 def getProvinceBoundaryBox(provinceName):
 	Place_Details = requests.get(
 		'http://api.mapbox.com/geocoding/v5/mapbox.places/' + provinceName + '%20province%20Italy.json?access_token=pk.eyJ1Ijoic2Fpa2F0amFuYTIzMDkiLCJhIjoiY2s4OXMzbnM5MDByYjNsbXpqeDRncWptbyJ9.zGt4oEGDDYra_yRTGbmqcg').json()[
@@ -22,7 +24,8 @@ def getProvinceBoundaryBox(provinceName):
 
 	return getBbox
 
-
+# The below function used to get the USA Patient Data Automatically from HARVARD DATABASE COVID Patient Database and will create a timeseries patient file along with population of the Area at county along with a USA County file
+## Parameter Needed - Target Directory to save the File
 def fetch_us_patientdata(tgtdir):
 	url='https://dataverse.harvard.edu/api/access/datafile/3792860?format=original&gbrecs=true'
 	urllib.request.urlretrieve(url,'us_county_confirmed_cases.csv')
@@ -66,10 +69,13 @@ def fetch_us_patientdata(tgtdir):
 		print("fetch failed")
 		raise
 	full_data['no_pat'] = full_data.groupby(['cfips'])['no_pat'].apply(lambda x: x.cummax())
-	us_counties.to_csv(tgtdir+'us_counties.csv',index=False)	
+	us_counties.to_csv(tgtdir+'us_counties.csv',index=False)
 	full_data.to_csv(tgtdir+'USA_covid_data_final.csv',index=False)
 	print(' USA Patient Data Created under Directory :'+tgtdir)
 
+
+## Below function will create the China COVID19 time series Patient file by abosrving data from Harvard Database and it will create County file along with Population Data by county/province
+## Parameter Needed - Target Directory to save the File
 
 def fetch_china_patientdata(tgtdir):
 	url = 'https://dataverse.harvard.edu/api/access/datafile/3781338?format=original&gbrecs=true'
@@ -164,6 +170,8 @@ def fetch_china_patientdata(tgtdir):
 	print(' China Patient Data Created under Directory :' + tgtdir)
 
 
+## The below function will give us the Patient count along with population in timeseries manner for ITALY provinces along with County file
+## Parameter Needed - Target Directory to save the File
 def fetch_italy_patientdata(tgtdir):
 	url = 'https://github.com/pcm-dpc/COVID-19/archive/master.zip'
 	urllib.request.urlretrieve(url, 'IT_covid19.zip')
@@ -187,7 +195,7 @@ def fetch_italy_patientdata(tgtdir):
 			each_lat_long_df['long'] = [shapelong]
 			each_lat_long_df = pd.DataFrame.from_dict(each_lat_long_df)
 			lat_long_df = lat_long_df.append(each_lat_long_df)
-	
+
 	full_data = ps.sqldf(
 		''' select a.*, b.* from latest_data a left join lat_long_df b on a."Province Name" = b."Province Name" ''',
 		locals())
@@ -218,13 +226,17 @@ def fetch_italy_patientdata(tgtdir):
 	Population_Data_prov = Population_Data[['Name', 'Status', 'Population 2019']]
 	Population_Data_prov['Name'] = Population_Data_prov['Name'].apply(lambda x: x.strip())
 	final_Data = ps.sqldf(
-		''' select a.*, b."Population 2019" from final_Data a left join Population_Data_prov b on a."Province Name" = b.Name ''',
+		''' select a.*, b."Population 2019" as Population from final_Data a left join Population_Data_prov b on a."Province Name" = b.Name ''',
 		locals())
 	final_Data['no_pat'] = final_Data.groupby(['Province Name'])['no_pat'].apply(lambda x: x.cummax())
+	Population_Data_prov.columns = ['County','Status','Population']
+	Population_Data_prov.to_csv('Italy_counties.csv',index=False)
 	final_Data.to_csv(tgtdir+'Italy_Covid_Patient.csv', index=False)
 	print(' Italy Patient Data Created under Directory :' + tgtdir)
 
 
+## The below function will get the Indian COVID-19 time series patient Data and District level details over India, Along with the population file
+## Parameter Needed - Target Directory to save the File
 def fetch_india_patientdata(tgtdir):
 	India_Raw_Data = requests.get('https://api.covid19india.org/raw_data.json').json()['raw_data']
 	India_full_Data = pd.DataFrame()
@@ -290,23 +302,3 @@ def fetch_india_patientdata(tgtdir):
 	India_Final_Merge_Data['no_pat'] = India_Final_Merge_Data.groupby(['State','District'])['no_pat'].apply(lambda x: x.cummax())
 	India_Final_Merge_Data.to_csv(tgtdir + 'India_Covid_Patient.csv', index=False)
 	print(' India Patient Data Created under Directory :' + tgtdir)
-
-if __name__ == '__main__':
-	getCountry = input('Please enter the country name for which you want to prepare the data : (USA, Italy, China)')
-	getDirectory = input('Please mention the directory path you want save file:')
-	directory = getDirectory+'/'
-
-	if lower(getCountry) == 'italy':
-		fetch_italy_patientdata(directory)
-
-	elif lower(getCountry) == 'usa' or lower(getCountry) == 'united states' or lower(getCountry) == 'america':
-		fetch_us_patientdata(directory)
-
-	elif lower(getCountry) == 'china':
-		fetch_china_patientdata(directory)
-
-	elif lower(getCountry) == 'india':
-		fetch_india_patientdata(directory)
-
-else:
-	print('All Get Data Modules imported Successfully!!')
