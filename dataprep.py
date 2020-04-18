@@ -2,16 +2,12 @@ import numpy as np
 import math
 import pandas as pd
 import pandasql as ps
-
-## Internal function for Truncating the Number data
-## Parameter Needed - 1. number - which value to truncate 2. stepper - pricision step
-def truncate(number, digits) -> float:
-	stepper = 10.0 ** digits
-	return math.trunc(stepper * number) / stepper
+import matplotlib.pyplot as plt
 ## Function to divide the GRID Area into Pixels
 ## Parameter Needed - 1. pixlatmax - float - Maximum Value of Lattitude( GRID Boundary) 2. pixlatmin - float - Minimum value of the lattitudes( GRID Boundary)
 ##					  3. pixlonmax - float - Maximum value of Longitude( GRID Boundary) 4. pixlonmin - float - Minimum value of longitude( GRID Boundary)
 ##					  5. pixelsize - Number - Size of Earch Pixel in GRID(Number of Pixel in Grid)	6. Grid No - Number - The Id of Grid
+
 def GetPixelDF(pixlatmin,pixlatmax,pixlonmin,pixlonmax,pixelsize,grid_no):
 	fact=100000000
 	latmin = np.int(pixlatmin*fact)
@@ -26,7 +22,7 @@ def GetPixelDF(pixlatmin,pixlatmax,pixlonmin,pixlonmax,pixelsize,grid_no):
 	pixlonvals = list(np.round(np.arange(longmin,longmax,pixelLonRangeStep)/fact,5))
 	if len(pixlonvals) == pixelsize:
 		pixlonvals.append(pixlonmax)
-	ret_df = []#pd.DataFrame()
+	ret_df = []
 	pixno = 1
 	for i in range(len(pixlatvals)-1):
 		minlat = pixlatvals[i]
@@ -35,7 +31,7 @@ def GetPixelDF(pixlatmin,pixlatmax,pixlonmin,pixlonmax,pixelsize,grid_no):
 			minlong = pixlonvals[j]
 			maxlong = pixlonvals[j+1]
 			ret_df.append([grid_no,pixno,minlat,maxlat,minlong,maxlong])
-			pixno +=1
+			pixno +=1 
 	ret_df = pd.DataFrame(ret_df,columns =['grid','pixno','minlat','maxlat','minlong','maxlong'])
 	return ret_df
 
@@ -43,6 +39,7 @@ def GetPixelDF(pixlatmin,pixlatmax,pixlonmin,pixlonmax,pixelsize,grid_no):
 ## Parameter Needed - 1. latlongrange - Tuple -  Coordinate boundary of the country(south, north, west, east) 2. latstep - number -Number of division under lattitude range
 ##					  3. longstep - Number - Number of division under longitude range  4. margin - Number - Overlapping adjustment for pixel boundaries
 ##					  5. pixelsize - Number - Pixelsize of each subpixel	6. counties - Dataframe - The county Dataframe containing the lattitude longitude and population data
+
 def get_The_Area_Grid(latlongrange,latstep,longstep,margin,pixelsize, counties):
 	fact=100000000
 	(min_lat,max_lat,min_long,max_long) = latlongrange#(23, 49,-124.5, -66.31)
@@ -64,7 +61,7 @@ def get_The_Area_Grid(latlongrange,latstep,longstep,margin,pixelsize, counties):
 	#print(longitudes)
 	Area_Grid =  {}
 	Area_pixel_Grid = pd.DataFrame()
-
+	
 	Area_Grid['lattitudes'] = lattitudes
 	Area_Grid['longitudes'] = longitudes
 	grid_no = 1
@@ -77,7 +74,7 @@ def get_The_Area_Grid(latlongrange,latstep,longstep,margin,pixelsize, counties):
 			Area_pixel_Grid = Area_pixel_Grid.append(GetPixelDF(pixlatmin,pixlatmax,pixlonmin,pixlonmax,pixelsize+2*margin,grid_no))
 			grid_no +=1
 	Area_pixel_Grid = ps.sqldf("""select a.*, sum(ifnull(b.pop,0)) pop from Area_pixel_Grid a left outer join counties b
-		on b.lat between a.minlat and a.maxlat and b.long between a.minlong and a.maxlong
+		on b.lat between a.minlat and a.maxlat and b.long between a.minlong and a.maxlong 
 		group by a.grid,a.pixno,a.minlong,a.maxlong,a.minlat,a.maxlat""", locals())
 	return Area_pixel_Grid
 
@@ -98,35 +95,6 @@ def validate_frames(frames_grid,df_pop_pat,margin):
 	a=a[start:end,start:end].flatten()
 	print(np.sum(frames_grid[frames_grid['pixno'].isin(a)]['new_pat']))
 
-#Area_df = get_The_Area_Grid((23, 49,-124.5, -66.31),24,40)
-
-### Writes the Grid patient population Image in the specified Directory
-###	Parameter Needed - 1. frames_grid - Dataframe - Will contain the dataframe population data for each and every frame 2. tgtdir - directory to save frame images 3. pixelsize - number - Size of each pixel in square
-import matplotlib.pyplot as plt
-def write_images(frames_grid,tgtdir,pixelsize):
-	days = set(frames_grid['day'])
-	for grid in set(frames_grid['grid']):
-		for day in days:
-			frame = frames_grid[(frames_grid['grid']==grid) & (frames_grid['day']==day)].sort_values(['pixno'])
-			fp = np.array(frame['pixel']).reshape(2*pixelsize,2*pixelsize)
-			fp = np.flip(fp,0)
-			if sum(sum(fp)) == 0:
-				continue
-			plt.imsave(tgtdir+'img-'+str(grid)+'-'+str(day)+'.png', 1-fp,cmap='gray')
-
-### Prepares the Population Image Based on the Divided Grid Dataframe
-def prep_pop_image(Area_df):
-	pix=np.int(np.sqrt(max(Area_df['pixno'])))
-	maxpop = max(Area_df['pop'])
-	popframes = []
-	for i in sorted(set(Area_df['grid'])):
-		frame = (Area_df[Area_df['grid']==i].sort_values(['pixno']))
-		frame = np.log(np.array(frame['pop'])+1)/np.log(maxpop)
-		frame = np.flip(frame.reshape(pix,pix),0)
-		popframes.append(frame)
-	popframes = np.array(popframes)
-	return popframes
-
 ## Creates the Frame DF from Area DF and Patient Data
 ## Parameter Needed - 1. df_pop_pat - Dataframe - country specific pixel level patient and population data for country 2. Area_df - DataFrame-  Pixel level coridnate data with population for each pixel
 def frames_df(df_pop_pat,Area_df):
@@ -143,14 +111,13 @@ def frames_df(df_pop_pat,Area_df):
 		if len(df_pop_pat_grid) == 0:
 			continue
 		frames = ps.sqldf("""select a.grid,a.day,a.pixno,a.data_date,sum(ifnull(b.no_pat,0)) no_pat,sum(ifnull(a.pop,0))*0.6 pop, sum(ifnull(b.new_pat,0)) new_pat,
-					sum(ifnull(a.pop,0))*0.6 - sum(ifnull(b.no_pat,0)) sus_pop,
+					sum(ifnull(a.pop,0))*0.6 - sum(ifnull(b.no_pat,0)) sus_pop, 
 					max(ifnull(b.lat,0)) lat, min(ifnull(b.long,0)) long
 					from Area_day_df_grid a left outer join df_pop_pat_grid b on a.data_date = b.data_date and
 					b.lat between a.minlat and a.maxlat and b.long between a.minlong and a.maxlong
 					group by a.grid,a.day,a.pixno""",locals())
 		frames['pop'] = frames.groupby(['grid','pixno'])['pop'].transform('max')
-		maxpop = max(frames['pop'])
-		#frames['pixel'] = np.array(frames[['no_pat']].values.astype(float)/(frames[['pop']].values.astype(float)+1))
+		maxpop = max(frames['pop'])	
 		frames['pixel'] = np.array((np.log(frames[['new_pat']].values.astype(float)+1)/np.log(frames[['sus_pop']].values.astype(float)+2)))
 		if np.sum(df_pop_pat_grid['no_pat']) != np.sum(frames['no_pat']):
 			print("failure", grid)
@@ -177,15 +144,13 @@ def prep_image(frames_grid,minframe,testspan=4,channel = 1, extframes = []):
 		for day in range(days,0,-1):
 			frames = frames_grid[(frames_grid['grid']==grid) & (frames_grid['day']==day-1)].sort_values(['pixno'])
 			frame = np.array(frames['pixel']).reshape(pix,pix)
-			#popframes = np.log((np.array(frames['sus_pop'])+1)*(np.array(frames['no_pat'])+1))/np.log((maxpop**2)/4)
 			popframes = np.log((np.array(frames['pop'])+1))/np.log(maxpop)
-			#popframes = np.array(frames['pop'])/maxpop
 			popframes = popframes.reshape(pix,pix)
 			#if sum(sum(frame)) == 0:
 			#	continue
 			frame = np.flip(frame,0)
 			popframes = np.flip(popframes,0)
-			frame[frame<0] = 0
+			frame[frame<0] = 0			
 			if np.max(frame) > 1:
 				frame /= np.max(frame)
 			frame = frame[::,::,np.newaxis]
@@ -200,16 +165,15 @@ def prep_image(frames_grid,minframe,testspan=4,channel = 1, extframes = []):
 			frame = frames_grid[(frames_grid['grid']==grid) & (frames_grid['day']==day)].sort_values(['pixno'])
 			frame = np.array(frame['pixel']).reshape(pix,pix)
 			frame = np.flip(frame,0)
-			frame[frame<0] = 0
+			frame[frame<0] = 0	
 			#frame += 0.1
 			frame = frame[::,::,np.newaxis]
 			output_samp.append(frame)
 		train_samp = np.array(train_samp)
 		output_samp = np.array(output_samp)
 		if train_samp.shape[0]< minframe:
-			continue
+			continue  
 		test.append(np.flip(train_samp[testspan:minframe+testspan,::,::,::],0))
-		#test.append(np.flip(train_samp[testspan-1:,::,::,::],0))
 		testoutput.append(np.flip(output_samp[:testspan,::,::,::],0))
 		test_gridday[testseq] = (grid,testspan)
 		testseq += 1
@@ -218,10 +182,10 @@ def prep_image(frames_grid,minframe,testspan=4,channel = 1, extframes = []):
 			train.append(np.flip(train_samp[i:i+minframe,::,::,::],0))
 			output.append(np.flip(output_samp[i:i+minframe,::,::,::],0))
 	test = np.array(test)
-	testoutput = np.array(testoutput)
+	testoutput = np.array(testoutput) 
 
 	train = np.array(train)
-	output = np.array(output)
+	output = np.array(output) 
 	return(train,output,test,testoutput,test_gridday)
 
 ## Prepare Frames Grid Specially for USA
