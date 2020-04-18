@@ -41,7 +41,7 @@ def fetch_us_patientdata(tgtdir):
 	url='https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/HIDLTK/OFVFPY'
 	urllib.request.urlretrieve(url,tgtdir+'/COUNTY_MAP.zip')
 	zip = ZipFile(tgtdir+'/COUNTY_MAP.zip')
-	zip.extractall()
+	zip.extractall(tgtdir)
 	sf = shapefile.Reader(tgtdir+"/CO_CARTO")
 	shape_df = pd.DataFrame()
 	shapes = sf.shapes()
@@ -180,7 +180,7 @@ def fetch_italy_patientdata(tgtdir):
 	url = 'https://github.com/pcm-dpc/COVID-19/archive/master.zip'
 	urllib.request.urlretrieve(url, tgtdir+'/IT_covid19.zip')
 	zip = ZipFile(tgtdir+'/IT_covid19.zip')
-	zip.extractall()
+	zip.extractall(tgtdir)
 	latest_data = pd.read_csv(tgtdir+'/COVID-19-master/dati-province/dpc-covid19-ita-province.csv')
 	latest_data = ps.sqldf(
 		''' select  Date(data) as data_date,denominazione_regione as "RegionName",denominazione_provincia as "ProvinceName", lat, long,totale_casi as "no_pat" from latest_data ''',
@@ -211,7 +211,7 @@ def fetch_italy_patientdata(tgtdir):
 	for eachDate in Dates_in_Data:
 		for eachRegion in Regions_in_Data:
 			full_region_data = full_data[(full_data['data_date'] == eachDate) & (full_data['RegionName'] == eachRegion)]
-			no_of_province = len(full_region_data['ProvinceName'].unique()) - 1
+			no_of_province = len(full_region_data['ProvinceName'].iloc[:,0]..unique()) - 1
 			try:
 				UnIdentified = full_region_data[full_region_data['lat'] == 0.000000]['no_pat'].values[0]
 			except:
