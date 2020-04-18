@@ -28,8 +28,8 @@ def getProvinceBoundaryBox(provinceName):
 ## Parameter Needed - Target Directory to save the File
 def fetch_us_patientdata(tgtdir):
 	url='https://dataverse.harvard.edu/api/access/datafile/3792860?format=original&gbrecs=true'
-	urllib.request.urlretrieve(url,'us_county_confirmed_cases.csv')
-	latest_data = pd.read_csv('us_county_confirmed_cases.csv')
+	urllib.request.urlretrieve(url,tgtdir+'/us_county_confirmed_cases.csv')
+	latest_data = pd.read_csv(tgtdir+'/us_county_confirmed_cases.csv')
 	allcols = list(latest_data.columns)
 	datecols = allcols[allcols.index('HHD10')+1:]
 	latest_data = latest_data[['COUNTY', 'NAME']+datecols]
@@ -39,11 +39,10 @@ def fetch_us_patientdata(tgtdir):
 	latest_data['county']=latest_data['county'].apply(lambda x : x.split(' County')[0])
 
 	url='https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/HIDLTK/OFVFPY'
-	urllib.request.urlretrieve(url,'COUNTY_MAP.zip')
-	zip = ZipFile('COUNTY_MAP.zip')
+	urllib.request.urlretrieve(url,tgtdir+'/COUNTY_MAP.zip')
+	zip = ZipFile(tgtdir+'/COUNTY_MAP.zip')
 	zip.extractall()
-	#!unzip ./COUNTY_MAP.zip
-	sf = shapefile.Reader("CO_CARTO")
+	sf = shapefile.Reader(tgtdir+"/CO_CARTO")
 	shape_df = pd.DataFrame()
 	shapes = sf.shapes()
 	records = sf.records()
@@ -63,12 +62,14 @@ def fetch_us_patientdata(tgtdir):
 	us_counties = shape_df
 	us_counties['county_name'] = us_counties['county_name'].apply(lambda x: x.split(' County')[0])
 	us_counties['county_fips'] = us_counties['county_fips'].apply(lambda x: int(x))
-	us_counties.columns = ['lat','long', 'cfips', 'county', 'Population', 'HHD']
+	us_counties.columns = ['lat','long', 'cfips', 'county', 'pop', 'HHD']
 	full_data = pd.merge(latest_data, us_counties, on=['cfips', 'county'])
 	if sum(full_data['no_pat']) != sum(latest_data['no_pat']):
 		print("fetch failed")
 		raise
 	full_data['no_pat'] = full_data.groupby(['cfips'])['no_pat'].apply(lambda x: x.cummax())
+	full_data['new_pat'] = full_data.groupby(['lat','long'])['no_pat'].diff()
+	full_data = full_data.dropna()
 	us_counties.to_csv(tgtdir+'us_counties.csv',index=False)
 	full_data.to_csv(tgtdir+'USA_covid_data_final.csv',index=False)
 	print(' USA Patient Data Created under Directory :'+tgtdir)
@@ -79,8 +80,8 @@ def fetch_us_patientdata(tgtdir):
 
 def fetch_china_patientdata(tgtdir):
 	url = 'https://dataverse.harvard.edu/api/access/datafile/3781338?format=original&gbrecs=true'
-	urllib.request.urlretrieve(url, 'City_Confirmed_Map_China.csv')
-	latest_data = pd.read_csv('City_Confirmed_Map_China.csv')
+	urllib.request.urlretrieve(url, tgtdir+'/City_Confirmed_Map_China.csv')
+	latest_data = pd.read_csv(tgtdir+'/City_Confirmed_Map_China.csv')
 	latest_data = latest_data[
 		['GbCity', 'GbProv', 'City_EN', 'Prov_EN', 'N_C_0115', 'N_C_0116', 'N_C_0117', 'N_C_0118', 'N_C_0119',
 		 'N_C_0120', 'N_C_0121', 'N_C_0122', 'N_C_0123', 'N_C_0124', 'N_C_0125', 'N_C_0126', 'N_C_0127', 'N_C_0128',
@@ -134,10 +135,10 @@ def fetch_china_patientdata(tgtdir):
 	latest_data_Normalized['GbCity'] = latest_data_Normalized['GbCity'].apply(lambda x: str(x))
 	latest_data_Normalized['GbProv'] = latest_data_Normalized['GbProv'].apply(lambda x: str(x))
 	url='https://dvn-cloud.s3.amazonaws.com/10.7910/DVN/MR5IJN/1710944b44b-ce6a2df0b32e?response-content-disposition=attachment%3B%20filename%2A%3DUTF-8%27%27china_city_basemap.zip&response-content-type=application%2Fzipped-shapefile&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20200408T040239Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3600&X-Amz-Credential=AKIAIEJ3NV7UYCSRJC7A%2F20200408%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=ed0cbb34d3e1a129167cbd353afc469d13ddaf4dc14520366df279219b422957'
-	urllib.request.urlretrieve(url,'china_city_basemap.zip')
-	zip = ZipFile('china_city_basemap.zip')
+	urllib.request.urlretrieve(url,tgtdir+'/china_city_basemap.zip')
+	zip = ZipFile(tgtdir+'/china_city_basemap.zip')
 	zip.extractall()
-	sf = shapefile.Reader("china_city_basemap")
+	sf = shapefile.Reader(tgtdir+"/china_city_basemap")
 	shape_df = pd.DataFrame()
 	shapes = sf.shapes()
 	records = sf.records()
@@ -159,12 +160,15 @@ def fetch_china_patientdata(tgtdir):
 	china_provinces['GbProv'] = china_provinces['GbProv'].apply(lambda x: str(x))
 	full_data = pd.merge(latest_data_Normalized, china_provinces, on=['city', 'Province'])
 	full_data = full_data[['city', 'Province', 'Date', 'Total Patient Count', 'lat', 'long']]
-	full_data.columns = ['city', 'Province', 'Date', 'no_pat', 'lat', 'long']
+	full_data.columns = ['city', 'Province', 'data_date', 'no_pat', 'lat', 'long']
 	china_pop_data = pd.read_excel('data/China_Population_Data.xlsx')
 	china_pop_data['Province'] = china_pop_data['Province'].apply(lambda x: x.split('[')[0])
 	full_data = ps.sqldf(
-		''' select a.*,b.Population from full_data a left join china_pop_data b on a.Province = b.Province ''',
+		''' select a.*,b.Population pop from full_data a left join china_pop_data b on a.Province = b.Province ''',
 		locals())
+	full_data['no_pat'] = full_data.groupby(['city'])['no_pat'].apply(lambda x: x.cummax())
+	full_data['new_pat'] = full_data.groupby(['lat','long'])['no_pat'].diff()
+	full_data = full_data.dropna()
 	china_provinces.to_csv(tgtdir+'China_provinces_data.csv', index=False)
 	full_data.to_csv(tgtdir+'China_covid_data_final.csv', index=False)
 	print(' China Patient Data Created under Directory :' + tgtdir)
@@ -174,20 +178,20 @@ def fetch_china_patientdata(tgtdir):
 ## Parameter Needed - Target Directory to save the File
 def fetch_italy_patientdata(tgtdir):
 	url = 'https://github.com/pcm-dpc/COVID-19/archive/master.zip'
-	urllib.request.urlretrieve(url, 'IT_covid19.zip')
-	zip = ZipFile('IT_covid19.zip')
+	urllib.request.urlretrieve(url, tgtdir+'/IT_covid19.zip')
+	zip = ZipFile(tgtdir+'/IT_covid19.zip')
 	zip.extractall()
-	latest_data = pd.read_csv('COVID-19-master/dati-province/dpc-covid19-ita-province.csv')
+	latest_data = pd.read_csv(tgtdir+'/COVID-19-master/dati-province/dpc-covid19-ita-province.csv')
 	latest_data = ps.sqldf(
-		''' select  Date(data) as Date,denominazione_regione as "Region Name",denominazione_provincia as "Province Name", lat, long,totale_casi as "no_pat" from latest_data ''',
+		''' select  Date(data) as data_date,denominazione_regione as "RegionName",denominazione_provincia as "ProvinceName", lat, long,totale_casi as "no_pat" from latest_data ''',
 		locals())
-	latest_data_Area_Regions = latest_data[['Region Name', 'Province Name']].drop_duplicates()
-	Unique_Provinces = latest_data_Area_Regions['Province Name'].unique()
+	latest_data_Area_Regions = latest_data[['RegionName', 'ProvinceName']].drop_duplicates()
+	Unique_Provinces = latest_data_Area_Regions['ProvinceName'].unique()
 	lat_long_df = pd.DataFrame()
 	for i in range(len(Unique_Provinces)):
 		if Unique_Provinces[i] != 'In fase di definizione/aggiornamento':
 			each_lat_long_df = {}
-			each_lat_long_df['Province Name'] = [Unique_Provinces[i]]
+			each_lat_long_df['ProvinceName'] = [Unique_Provinces[i]]
 			Cordinates = getProvinceBoundaryBox(Unique_Provinces[i])
 			shapelat = (Cordinates[1] + Cordinates[3]) / 2
 			shapelong = (Cordinates[0]+ Cordinates[2]) / 2
@@ -197,17 +201,17 @@ def fetch_italy_patientdata(tgtdir):
 			lat_long_df = lat_long_df.append(each_lat_long_df)
 
 	full_data = ps.sqldf(
-		''' select a.*, b.* from latest_data a left join lat_long_df b on a."Province Name" = b."Province Name" ''',
+		''' select a.*, b.* from latest_data a left join lat_long_df b on a."ProvinceName" = b."ProvinceName" ''',
 		locals())
-	full_data = latest_data
-	Dates_in_Data = full_data['Date'].unique()
-	Regions_in_Data = full_data['Region Name'].unique()
+	#full_data = latest_data
+	Dates_in_Data = full_data['data_date'].unique()
+	Regions_in_Data = full_data['RegionName'].unique()
 
 	final_Data = pd.DataFrame()
 	for eachDate in Dates_in_Data:
 		for eachRegion in Regions_in_Data:
-			full_region_data = full_data[(full_data['Date'] == eachDate) & (full_data['Region Name'] == eachRegion)]
-			no_of_province = len(full_region_data['Province Name'].unique()) - 1
+			full_region_data = full_data[(full_data['data_date'] == eachDate) & (full_data['RegionName'] == eachRegion)]
+			no_of_province = len(full_region_data['ProvinceName'].unique()) - 1
 			try:
 				UnIdentified = full_region_data[full_region_data['lat'] == 0.000000]['no_pat'].values[0]
 			except:
@@ -219,19 +223,20 @@ def fetch_italy_patientdata(tgtdir):
 
 			final_Data = final_Data.append(full_region_data)
 
-	# final_Data.columns = ['Date', 'Region Name', 'Province Name', 'lat', 'long', 'No_Pat', 'Province Name Extra','lat','long']
-	# final_Data = final_Data[['Date', 'Region Name', 'Province Name', 'lat', 'long', 'No_Pat', 'lat', 'long']]
-
 	Population_Data = pd.read_excel('data/Italy_population_and_Estimates.xlsx')
+	Population_Data = Population_Data[Population_Data.Status.isin(['Province','Metropolitan City','Autonomous Province'])]
 	Population_Data_prov = Population_Data[['Name', 'Status', 'Population 2019']]
 	Population_Data_prov['Name'] = Population_Data_prov['Name'].apply(lambda x: x.strip())
+	IT_counties = ps.sqldf("""select distinct a.ProvinceName,a.lat,a.long, b.'Population 2019' pop 
+                      from final_Data a join Population_Data_prov b on a.ProvinceName = b.Name """,locals())
 	final_Data = ps.sqldf(
-		''' select a.*, b."Population 2019" as Population from final_Data a left join Population_Data_prov b on a."Province Name" = b.Name ''',
+		''' select a.*, b."Population 2019" as pop from final_Data a left join Population_Data_prov b on a."ProvinceName" = b.Name ''',
 		locals())
-	final_Data['no_pat'] = final_Data.groupby(['Province Name'])['no_pat'].apply(lambda x: x.cummax())
-	Population_Data_prov.columns = ['County','Status','Population']
-	Population_Data_prov.to_csv('Italy_counties.csv',index=False)
-	final_Data.to_csv(tgtdir+'Italy_Covid_Patient.csv', index=False)
+	final_Data['no_pat'] = final_Data.groupby(['ProvinceName'])['no_pat'].apply(lambda x: x.cummax())
+	final_Data['new_pat'] = final_Data.groupby(['lat','long'])['no_pat'].diff()
+	final_Data = final_Data.dropna()
+	IT_counties.to_csv(tgtdir+'/Italy_counties.csv',index=False)
+	final_Data.to_csv(tgtdir+'/Italy_Covid_Patient.csv', index=False)
 	print(' Italy Patient Data Created under Directory :' + tgtdir)
 
 
@@ -245,9 +250,9 @@ def fetch_india_patientdata(tgtdir):
 		India_full_Data = India_full_Data.append(each_record_df)
 
 	India_full_Data = India_full_Data[India_full_Data['detectedstate'] != '']
-	India_full_Data['No of Pat'] = 1
+	India_full_Data['no_pat'] = 1
 	India_full_Data = ps.sqldf(
-		''' select detecteddistrict,detectedstate,sum("No of Pat") as "No of Pat" from India_full_Data group by detecteddistrict,detectedstate''',
+		''' select detecteddistrict,detectedstate,sum("no_pat") as "no_pat" from India_full_Data group by detecteddistrict,detectedstate''',
 		locals())
 
 	lat_long_df = pd.read_csv('data/India_District_Wise_Population_Data_with_Lat_Long.csv')
@@ -255,22 +260,22 @@ def fetch_india_patientdata(tgtdir):
 	lat_long_df['detectedstate'] = lat_long_df['detectedstate'].apply(lambda x: x.strip())
 
 	India_Full_Merge_Data = ps.sqldf(
-		''' select a.*, ifnull(b.population,0) as population,ifnull(b.long,0) as long,ifnull(b.lat,0) as lat from India_full_Data a left join lat_long_df b on lower(a.detecteddistrict) = lower(b.detecteddistrict) and lower(a.detectedstate) = lower(b.detectedstate) order by a."No of Pat" desc''',
+		''' select a.*, ifnull(b.population,0) as pop,ifnull(b.long,0) as long,ifnull(b.lat,0) as lat from India_full_Data a left join lat_long_df b on lower(a.detecteddistrict) = lower(b.detecteddistrict) and lower(a.detectedstate) = lower(b.detectedstate) order by a.no_pat desc''',
 		locals())
 	unique_States = India_Full_Merge_Data['detectedstate'].unique()
 	India_Final_Merge_Data = pd.DataFrame()
 	for eachState in unique_States:
 		print(eachState)
 		state_data_valid = India_Full_Merge_Data[
-			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['population'] != 0)]
+			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['pop'] != 0)]
 		valid_districts = list(state_data_valid['detecteddistrict'].unique())
 		All_State_District = lat_long_df[lat_long_df['detectedstate'] == eachState]
 		All_Districts = list(All_State_District['detecteddistrict'].unique())
 		missing_districts = list(set(All_Districts) - set(valid_districts))
 		number_of_Missing_district = len(missing_districts)
 		state_invalid_data = India_Full_Merge_Data[
-			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['population'] == 0)]
-		Total_untagged_Patients = sum(state_invalid_data['No of Pat'])
+			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['pop'] == 0)]
+		Total_untagged_Patients = sum(state_invalid_data['no_pat'])
 		distribution_df = pd.DataFrame()
 
 		if Total_untagged_Patients != 0:
@@ -285,8 +290,8 @@ def fetch_india_patientdata(tgtdir):
 						(lat_long_df['detectedstate'] == eachState) & (lat_long_df['detecteddistrict'] == eachdistrict)]
 					district_dist_df['detectedstate'] = [eachState]
 					district_dist_df['detecteddistrict'] = [eachdistrict]
-					district_dist_df['No of Pat'] = [Patient_distribution]
-					district_dist_df['population'] = [lat_long_df_for_pericular_dist.iloc[0, 2]]
+					district_dist_df['no_pat'] = [Patient_distribution]
+					district_dist_df['pop'] = [lat_long_df_for_pericular_dist.iloc[0, 2]]
 					district_dist_df['long'] = [lat_long_df_for_pericular_dist.iloc[0, 3]]
 					district_dist_df['lat'] = [lat_long_df_for_pericular_dist.iloc[0, 4]]
 					distribution_df = distribution_df.append(pd.DataFrame.from_dict(district_dist_df))
@@ -298,7 +303,12 @@ def fetch_india_patientdata(tgtdir):
 
 		India_Final_Merge_Data = India_Final_Merge_Data.append(full_State_df)
 
-	India_Final_Merge_Data.columns = ['no_pat', 'District', 'State', 'lat', 'long', 'population']
+	India_Final_Merge_Data.columns = ['no_pat', 'District', 'State', 'lat', 'long', 'pop']
+	India_district = lat_long_df[['detecteddistrict', 'detectedstate', 'lat', 'long', 'population']]
+	India_district.columns = ['District', 'State', 'lat', 'long', 'pop']
 	India_Final_Merge_Data['no_pat'] = India_Final_Merge_Data.groupby(['State','District'])['no_pat'].apply(lambda x: x.cummax())
-	India_Final_Merge_Data.to_csv(tgtdir + 'India_Covid_Patient.csv', index=False)
+	India_Final_Merge_Data['new_pat'] = India_Final_Merge_Data.groupby(['lat','long'])['no_pat'].diff()
+	India_Final_Merge_Data = India_Final_Merge_Data.dropna()
+	India_Final_Merge_Data.to_csv(tgtdir + '/India_Covid_Patient.csv', index=False)
+	India_district.to_csv(tgtdir + '/India_district.csv', index=False)
 	print(' India Patient Data Created under Directory :' + tgtdir)
