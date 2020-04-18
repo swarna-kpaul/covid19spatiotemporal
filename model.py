@@ -4,35 +4,29 @@ from tensorflow.keras.layers import ConvLSTM2D
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras import losses
 import numpy as np
-import pylab as plt
-from PIL import Image
 import pandas as pd
-from matplotlib import image
-from sklearn import preprocessing
-from tensorflow import keras
-from tensorflow.keras import backend as K
-
-
-def custom_loss(y_actual, y_pred):
-	loss = K.mean(K.sum(K.abs((y_actual-y_pred)*100)))
-	return loss
-	
-def create_model(pixel,filters,channel,hiddenlayers = 5):
+import random
+import pandasql as ps
+import pickle
+from scipy.stats import entropy
+########## Create ConvLSTM network ##############
+ 
+def create_model(pixel,filters,channel,hiddenlayers = 4):
 	seq = Sequential()
 	seq.add(ConvLSTM2D(filters=filters, kernel_size=(3, 3),
 				   input_shape=(None, pixel, pixel, channel),
 				   padding='same', return_sequences=True, activation = 'elu'))
 	for layer in range(hiddenlayers):
 		seq.add(ConvLSTM2D(filters=filters, kernel_size=(3, 3),
-				   padding='same', return_sequences=True))#,activation = 'relu')) #activation ='hard_sigmoid' ))#, kernel_regularizer=keras.regularizers.l2(l=0.1)))
-	#seq.add(BatchNormalization())
+				   padding='same', return_sequences=True))
 
 	seq.add(Conv3D(filters=1, kernel_size=(3, 3, 3),
 			   activation='elu',
-			   padding='same', data_format='channels_last'))#,kernel_regularizer=keras.regularizers.l2(l=0.1)))
-	seq.compile(loss='mean_squared_error', optimizer='adam',metrics=['mae']) #losses.KLDivergence()
+			   padding='same', data_format='channels_last'))
+	seq.compile(loss='mean_squared_error', optimizer='adam',metrics=['mae'])
 	return seq
 
+############## Save ensemble model to disk ###################
 def save_ensemble(ensemble,tgt_dir,name='default'):
 	_ensemble_models = ensemble[0]
 	ensemble_weights = ensemble[1]
@@ -46,6 +40,7 @@ def save_ensemble(ensemble,tgt_dir,name='default'):
 		pickle.dump(ensemble_weights,file)
 	return
 
+################ Load ensemble from disk ##########################
 def load_ensemble(name,tgt_dir):
 	####### load model_def
 	ensemble_models = []
@@ -63,13 +58,16 @@ def load_ensemble(name,tgt_dir):
 	return((ensemble_models,ensemble_weights))
 		
 
-import random
-def softmax(x):
 # """Compute softmax values for each sets of scores in x."""
-	e_x = np.exp(x - np.max(x))
+def softmax(x):
+	if np.max(x) > 1:
+		e_x = np.exp(x/np.max(x))
+	else:
+		e_x = np.exp(x - np.max(x))
 	return e_x / e_x.sum()
 
 
+########## Train ensemble model ##########################
 def train_ensemble(train,output, hiddenlayers = 3,epochs = 20,ensembles=5,gamma = 0.6, channel = 2 , pixel = 16, filters = 32):
 	ensemble_models = []
 	ensemble_weights = []
@@ -90,7 +88,8 @@ def train_ensemble(train,output, hiddenlayers = 3,epochs = 20,ensembles=5,gamma 
 	ensemble_weights = softmax(np.array(ensemble_weights))
 	print(ensemble_weights)
 	return ((ensemble_models,ensemble_weights))
-	
+
+################# Train ensemble with USA data ###########################
 def train_usa_ensemble(indata):
 	group_ensembles = []
 	for (train,output,test,testoutput,test_gridday,frames_grid) in indata:
@@ -98,6 +97,7 @@ def train_usa_ensemble(indata):
 		group_ensembles.append(ensemble_us)
 	return group_ensembles
 
+############ Predict next from by passing a sequence of input frames to the ensemble #####
 def ensemble_predict(ensemble,inp_data):
 	ensemble_models = ensemble[0]
 	ensemble_weights = ensemble[1]
@@ -105,7 +105,8 @@ def ensemble_predict(ensemble,inp_data):
 	for i,model in enumerate(ensemble_models):
 		prediction += model.predict(inp_data) * ensemble_weights[i]
 	return prediction
-	
+
+########### Merge multiple ensembles to 1 #########################
 def merge_ensemble(ensemble_list):
 	ensemble_models = []
 	ensemble_weights = []
@@ -116,11 +117,10 @@ def merge_ensemble(ensemble_list):
 	return ((ensemble_models,ensemble_weights))
 	
 	
-import pandasql as ps
-import pickle
+########## Convert image pixel values to number of infection cases ########
 def convert_image_to_data(image,margin,sus_pop):  
 	frame = image
-	frame[frame<0.01] = 0
+	frame[frame<0.001] = 0
 	pix = frame.shape[0]
 	frame = frame[margin:pix-margin,margin:pix-margin]
 	_sus_pop = np.log(sus_pop +2)
@@ -130,7 +130,8 @@ def convert_image_to_data(image,margin,sus_pop):
 	frame = np.round(frame,0)
 	return (frame,popexists_size)
 	
-	
+
+################## Test an ensemble model ###########################
 def validate(ensemble,test,testout,test_gridday,frames_grid,margin):
 	errorsum = 0
 	cnt = 1
@@ -178,7 +179,6 @@ def validate(ensemble,test,testout,test_gridday,frames_grid,margin):
 			_errorframe['grid'] = grid   
 			errorframe = errorframe.append(_errorframe)   			
 			error = np.sum(np.absolute((predictframe - actualframe)/notzeroframe))/(popexists_size+1)
-			#print(error,k,grid,i)	 
 			errorsum +=error
 			cnt +=1
 			predicttotal = predicttotal.append(pd.DataFrame([[grid,i,np.sum(predictframe),np.sum(actualframe)]],columns=['grid','day', 'predict','actual']))
@@ -204,24 +204,25 @@ def validate(ensemble,test,testout,test_gridday,frames_grid,margin):
 	averageerror = errorsum/cnt
 	return (averageerror,predicttotal,averagetotalerror,errorframe)
 	
-from scipy.stats import entropy
 
+############ Test ensemble model foor Italy ####################
 def test_italy_ensemble(it_ensembles,test,testoutput,test_gridday,frames_grid,span=5,margin=4):
 	test_gridday_span = {}
 	for i,v in test_gridday.items():
 		test_gridday_span[i] = (v[0],span)
 	averageerror,predicttotal,averagetotalerror,errorframe = validate(it_ensembles,test,testoutput,test_gridday_span,frames_grid,margin)
-	_errorframe=country_errorframe.groupby(['grid','pixno']).sum().reset_index()
-	_errorframe=pd.merge(_errorframe,frames_grid_country[frames_grid_country['day'] == max(frames_grid_country['day']) -testoutput.shape[1]][['grid','pixno','no_pat']],on = ['grid','pixno'])
+	_errorframe=errorframe.groupby(['grid','pixno']).sum().reset_index()
+	_errorframe=pd.merge(_errorframe,frames_grid[frames_grid['day'] == max(frames_grid['day']) -testoutput.shape[1]][['grid','pixno','no_pat']],on = ['grid','pixno'])
 	_errorframe['actual'] =  _errorframe['actual']+_errorframe['no_pat']
 	_errorframe['predict'] =  _errorframe['predict']+_errorframe['no_pat']
 	_errorframe['actual_denom'] = _errorframe['actual']
 	_errorframe[_errorframe['actual_denom']<1]['actual_denom'] = 1
-	KL_div = entropy( (_errorframe['predict']+1)/(max(_errorframe['predict'])+1), (_errorframe['actual']+1)/(max(_errorframe['actual'])+1) )
+	KL_div = entropy( softmax(_errorframe['predict']), softmax(_errorframe['actual']) )
 	MAPE = (np.sum(np.absolute((_errorframe['actual']-_errorframe['predict'])/np.array(_errorframe['actual_denom'])))/len(_errorframe))
 	cumulative_predicttotal_day,MAPE_countrytotal = predict_countrytotal(frames_grid,span,predicttotal,margin)
 	return(KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal)
-	
+
+################# Calculate total predicted infection cases across country ##############
 def predict_countrytotal(frames_grid,span,predicttotal,margin):
 	pix = np.int(np.sqrt(max(frames_grid['pixno'])))
 	gridpix = np.flip(np.array(range(1,max(frames_grid['pixno'])+1)).reshape(pix,pix),0)
@@ -235,6 +236,7 @@ def predict_countrytotal(frames_grid,span,predicttotal,margin):
 	averagetotalerror_countrytotal  = sum(np.absolute(np.array(_predicttotal_day['predict'] - _predicttotal_day['actual']))/np.array(_predicttotal_day['actual']))/span
 	return (predicttotal_day,averagetotalerror_countrytotal)
  
+############ Test ensemble model of USA #####################
 def test_usa_ensemble(group_ensembles,indata,span,margin=4):
 	predicttotal_country =pd.DataFrame()
 	averageerror_country =0
@@ -246,32 +248,16 @@ def test_usa_ensemble(group_ensembles,indata,span,margin=4):
 			test_gridday_span[i] = (v[0],span)
 		averageerror,predicttotal,averagetotalerror,errorframe = validate(group_ensembles[group],test,testoutput,test_gridday_span,frames_grid,margin)
 		predicttotal_country = predicttotal_country.append(predicttotal)
-		#averageerror_country +=averageerror
 		country_errorframe = country_errorframe.append(errorframe)
 		frames_grid_country = frames_grid_country.append(frames_grid)
-	#averageerror_country = averageerror_country/len(indata)
 	_errorframe=country_errorframe.groupby(['grid','pixno']).sum().reset_index()
 	_errorframe=pd.merge(_errorframe,frames_grid_country[frames_grid_country['day'] == max(frames_grid_country['day']) -testoutput.shape[1]][['grid','pixno','no_pat']],on = ['grid','pixno'])
 	_errorframe['actual'] =  _errorframe['actual']+_errorframe['no_pat']
 	_errorframe['predict'] =  _errorframe['predict']+_errorframe['no_pat']
 	_errorframe['actual_denom'] = _errorframe['actual']
 	_errorframe.loc[_errorframe['actual_denom']<1,['actual_denom']] = 1
-	KL_div = entropy( (_errorframe['predict']+1)/(max(_errorframe['predict'])+1), (_errorframe['actual']+1)/(max(_errorframe['actual'])+1) )
+	KL_div = entropy( softmax(_errorframe['predict']), softmax(_errorframe['actual']))
 	MAPE = (np.sum(np.absolute((_errorframe['actual']-_errorframe['predict'])/np.array(_errorframe['actual_denom'])))/len(_errorframe))
 	cumulative_predicttotal_day,MAPE_countrytotal = predict_countrytotal(frames_grid_country,span,predicttotal_country,margin)
-	#_predicttotal_country = predicttotal_country[predicttotal_country['day'] <span]
-	#averagetotalerror_country =sum(np.absolute(np.array(_predicttotal_country.groupby(['day'])['predict'].sum() - _predicttotal_country.groupby(['day'])['actual'].sum()))/np.array(_predicttotal_country.groupby(['day'])['actual'].sum()))/span
 	return (KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country)
-	
-def predict_countrytotal_usa(indata,span,predicttotal):
-	frames_grid_country = pd.DataFrame()
-	for (train,output,test,testoutput,test_gridday,frames_grid) in indata:
-		frames_grid_country = frames_grid.append(frames_grid)
-	
-	return predict_countrytotal(frames_grid_country,span,predicttotal)
-	
-
-	
-	
-	
 		
