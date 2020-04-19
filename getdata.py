@@ -9,6 +9,13 @@ import requests
 import json
 import pkg_resources
 
+def softmax(x):
+	if np.max(x) > 1:
+		e_x = np.exp(x/np.max(x))
+	else:
+		e_x = np.exp(x - np.max(x))
+	return e_x / e_x.sum()
+
 ## getProvinceBoundaryBox function is to get the cordinate details from Mapbox API for ITALY
 ## Parameter Needed - Province Name
 def getProvinceBoundaryBox(provinceName):
@@ -256,70 +263,58 @@ def fetch_india_patientdata(tgtdir):
 	for eachRecord in India_Raw_Data:
 		each_record_df = pd.DataFrame(eachRecord, index=[0])
 		India_full_Data = India_full_Data.append(each_record_df)
-		
 	India_full_Data = India_full_Data[India_full_Data['detectedstate'] != '']
-	India_full_Data['dateannounced'] = pd.to_datetime(India_full_Data['dateannounced'])
-	India_full_Data['no_pat'] = 1
+	India_full_Data['dateannounced'] = pd.to_datetime(India_full_Data['dateannounced'],format = '%d/%m/%Y')
+	India_full_Data['dateannounced'] = India_full_Data['dateannounced'].dt.strftime("%Y%m%d").astype(int)
+	India_full_Data['new_pat'] = 1
 	India_full_Data = ps.sqldf(
-		''' select detecteddistrict,detectedstate,dateannounced data_date,sum("no_pat") as "no_pat" from India_full_Data group by detecteddistrict,detectedstate,dateannounced''',
-		locals())
+			''' select detecteddistrict,detectedstate,dateannounced data_date,sum("new_pat") as "new_pat" 
+		from India_full_Data group by detecteddistrict,detectedstate,dateannounced''',
+			locals())
 
 	lat_long_df = load_support_data('India_District_Wise_Population_Data_with_Lat_Long.csv','csv')
 	lat_long_df['detecteddistrict'] = lat_long_df['detecteddistrict'].apply(lambda x: x.strip())
 	lat_long_df['detectedstate'] = lat_long_df['detectedstate'].apply(lambda x: x.strip())
-
+	
 	India_Full_Merge_Data = ps.sqldf(
-		''' select a.*, ifnull(b.population,0) as pop,ifnull(b.long,0) as long,ifnull(b.lat,0) as lat from India_full_Data a left join lat_long_df b on lower(a.detecteddistrict) = lower(b.detecteddistrict) and lower(a.detectedstate) = lower(b.detectedstate) order by a.no_pat desc''',
-		locals())
+			''' select a.*, ifnull(b.population,0) as pop,ifnull(b.long,0) as long,ifnull(b.lat,0) as lat from India_full_Data a left join lat_long_df b on lower(a.detecteddistrict) = lower(b.detecteddistrict) and lower(a.detectedstate) = lower(b.detectedstate) order by a.new_pat desc''',
+			locals())
+			
 	unique_States = India_Full_Merge_Data['detectedstate'].unique()
-	India_Final_Merge_Data = pd.DataFrame()
+	India_Final_Merge_Data = India_Full_Merge_Data[India_Full_Merge_Data['pop']>0]#pd.DataFrame()
 	for eachState in unique_States:
-		print(eachState)
-		state_data_valid = India_Full_Merge_Data[
-			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['pop'] != 0)]
-		valid_districts = list(state_data_valid['detecteddistrict'].unique())
-		All_State_District = lat_long_df[lat_long_df['detectedstate'] == eachState]
-		All_Districts = list(All_State_District['detecteddistrict'].unique())
-		missing_districts = list(set(All_Districts) - set(valid_districts))
-		number_of_Missing_district = len(missing_districts)
-		state_invalid_data = India_Full_Merge_Data[
-			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['pop'] == 0)]
-		Total_untagged_Patients = sum(state_invalid_data['no_pat'])
-		distribution_df = pd.DataFrame()
-
-		if Total_untagged_Patients != 0:
-			if Total_untagged_Patients < number_of_Missing_district:
-				state_data_valid.iloc[0, 2] = state_data_valid.iloc[0, 2] + Total_untagged_Patients
-
-			else:
-				if number_of_Missing_district == 0 :
-					number_of_Missing_district = 1
-				Patient_distribution = int(round(Total_untagged_Patients / number_of_Missing_district))
-				for eachdistrict in missing_districts:
+		#print(eachState)
+		state_dist_ratio = India_Full_Merge_Data[(India_Full_Merge_Data['detectedstate'] == eachState)
+						  & (India_Full_Merge_Data['pop'] != 0)].groupby(['detecteddistrict'])['new_pat'].sum().reset_index()
+		state_dist_ratio['new_pat'] = softmax(np.array(state_dist_ratio['new_pat']))
+		for date in  India_Full_Merge_Data['data_date'].unique():
+			state_invalid_data = India_Full_Merge_Data[
+			(India_Full_Merge_Data['detectedstate'] == eachState) & (India_Full_Merge_Data['pop'] == 0) &
+		(India_Full_Merge_Data['data_date'] == date)]
+			Total_untagged_Patients = sum(state_invalid_data['new_pat'])
+			distribution_df = pd.DataFrame()
+			if Total_untagged_Patients != 0:
+				distribution = np.round(np.array(state_dist_ratio['new_pat']*Total_untagged_Patients))
+				for i,eachdistrict in enumerate(list(state_dist_ratio['detecteddistrict'])):
 					district_dist_df = {}
 					lat_long_df_for_pericular_dist = lat_long_df[
-						(lat_long_df['detectedstate'] == eachState) & (lat_long_df['detecteddistrict'] == eachdistrict)]
-					district_dist_df['detectedstate'] = [eachState]
+							(lat_long_df['detectedstate'] == eachState) & (lat_long_df['detecteddistrict'] == eachdistrict)]
 					district_dist_df['detecteddistrict'] = [eachdistrict]
-					district_dist_df['no_pat'] = [Patient_distribution]
+					district_dist_df['detectedstate'] = [eachState]        
+					district_dist_df['data_date'] = [date]
+					district_dist_df['new_pat'] = [distribution[i]]
 					district_dist_df['pop'] = [lat_long_df_for_pericular_dist.iloc[0, 2]]
 					district_dist_df['long'] = [lat_long_df_for_pericular_dist.iloc[0, 3]]
 					district_dist_df['lat'] = [lat_long_df_for_pericular_dist.iloc[0, 4]]
 					distribution_df = distribution_df.append(pd.DataFrame.from_dict(district_dist_df))
-
-		if distribution_df.empty == True:
-			full_State_df = state_data_valid
-		else:
-			full_State_df = state_data_valid.append(distribution_df)
-
-		India_Final_Merge_Data = India_Final_Merge_Data.append(full_State_df)
-
-	India_Final_Merge_Data.columns = ['no_pat', 'District', 'State', 'lat', 'long', 'pop']
+				#print(distribution_df)
+				India_Final_Merge_Data = India_Final_Merge_Data.append(distribution_df)
+	
+	India_Final_Merge_Data.columns = ['District', 'State','data_date','new_pat', 'pop', 'long','lat' ]
+	India_Final_Merge_Data = India_Final_Merge_Data.sort_values(by = ['State','District','data_date'])
 	India_district = lat_long_df[['detecteddistrict', 'detectedstate', 'lat', 'long', 'population']]
 	India_district.columns = ['District', 'State', 'lat', 'long', 'pop']
-	India_Final_Merge_Data['no_pat'] = India_Final_Merge_Data.groupby(['State','District'])['no_pat'].apply(lambda x: x.cummax())
-	India_Final_Merge_Data['new_pat'] = India_Final_Merge_Data.groupby(['lat','long'])['no_pat'].diff()
-	India_Final_Merge_Data = India_Final_Merge_Data.dropna()
+	India_Final_Merge_Data['no_pat'] = India_Final_Merge_Data.groupby(['State','District'])['new_pat'].apply(lambda x: x.cumsum())
 	India_Final_Merge_Data.to_csv(tgtdir + '/India_Covid_Patient.csv', index=False)
 	India_district.to_csv(tgtdir + '/India_district.csv', index=False)
 	print(' India Patient Data Created under Directory :' + tgtdir)
