@@ -160,8 +160,7 @@ def forecast(ensemble,input_sequence,frames_grid,span):
 			_forecastframe['grid'] = grid   
 			forecastframe = forecastframe.append(_forecastframe)   		
 	return forecastframe
-		
-
+	
 ################## Test an ensemble model ###########################
 def validate(ensemble,test,testout,test_gridday,frames_grid,margin):
 	errorsum = 0
@@ -295,7 +294,7 @@ def train_country_ensemble(src_dir,country,epochs = 1,hiddenlayers=2,ensembles=5
 	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
 		indata = pickle.load(filehandler)
 	if country == 'USA':
-		ensemble = train_usa_ensemble(indata)
+		ensemble = train_usa_ensemble(indata,epochs)
 		for group,ensemble_us in enumerate(ensemble):
 			save_ensemble(ensemble,src_dir,name='USA_group_'+str(group))
 	else:
@@ -321,7 +320,7 @@ def test_country_ensemble(src_dir,country,span,margin=4):
 		if span > test_gridday[0][1]:
 			print("span should be less than ",test_gridday[0][1]+1)
 			raise
-		KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test_ensemble(ensemble,test,testoutput,test_gridday,frames_grid,span=span,margin)
+		KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test_ensemble(ensemble,test,testoutput,test_gridday,frames_grid,span=span,margin=margin)
 	return (KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country)
 
 def forecast_country_cases(src_dir,country,span=5):
