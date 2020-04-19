@@ -175,7 +175,7 @@ def validate(ensemble,test,testout,test_gridday,frames_grid,margin):
 		track = test[k]
 		totpop = track[0,::,::,1:] 
 		pix = totpop.shape[0]
-		print(grid)
+		#print(grid)
 		pred_sus_pop = frames_grid[(frames_grid['grid'] ==grid) & (frames_grid['day'] <=(max(frames_grid['day'])-span))]
 		pred_sus_pop = pred_sus_pop.groupby(['pixno'])[['no_pat','pop']].max()
 		pred_sus_pop = 	np.array(pred_sus_pop['pop']) -np.array(pred_sus_pop['no_pat'])
@@ -338,7 +338,7 @@ def forecast_country_cases(src_dir,country,span=5,margin=4):
 		(train,output,test,testoutput,test_gridday,frames_grid) = indata
 		ensemble = load_ensemble(country,src_dir)
 		forecast_frame = forecast(ensemble,test,frames_grid,test_gridday,span,margin)
-	forecast_frame = ps.sqldf("""select a.*, b.day, a.ratio*b.predict predicted from df_pixel_county join forecast_frame on a.grid = b.grid and a.pixno = b.pixno """,locals())
+	forecast_frame = ps.sqldf("""select a.*, b.day, a.ratio*b.predict predicted from df_pixel_county a join forecast_frame b on a.grid = b.grid and a.pixno = b.pixno """,locals())
 	if country == 'USA':
 		forecast_frame['total_pat'] = forecast_frame.groupby(['cfips'])['predicted'].apply(lambda x: x.cumsum())
 	elif country == 'Italy':

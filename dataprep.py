@@ -258,7 +258,7 @@ def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,
 		N=18
 		Area_df = get_The_Area_Grid(area,M,N,margin=margin,pixelsize=pixelsize,counties=counties)
 		_df_area_county = ps.sqldf("""select b.District, b.State,b.lat,b.long,b.pop,ifnull(c.new_pat,0) no_pat from counties b 
-								left outer join _df_pop_pat c on b.ProvinceName = c.ProvinceName""",locals())
+								left outer join _df_pop_pat c on b.District = c.District and b.State = c.State""",locals())
 		df_pixel_county = ps.sqldf("""select a.grid,a.pixno,d.District District,d.State State,d.no_pat, d.pop from Area_df a 
 									join _df_area_county d
 									on d.lat between a.minlat and a.maxlat and d.long between a.minlong and a.maxlong""",locals())

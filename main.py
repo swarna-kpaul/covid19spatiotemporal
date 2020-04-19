@@ -3,6 +3,27 @@ from covid19spatiotemporal.dataprep import *
 from covid19spatiotemporal.model import *
 from covid19spatiotemporal.getdata import *
 
+def getdata(country,dir):
+	if country == 'USA':
+		fetch_usa_patientdata(dir)
+	elif country == 'Italy':
+		fetch_italy_patientdata(dir)
+	elif country == 'India':
+		fetch_india_patientdata(dir)
+		
+def train(country,dir,span,epoch,hiddenlayers):
+	country_dataprep(dir,country=country,testspan=span, channel = 2,minframe=10,margin=4,pixelsize=8)
+	train_country_ensemble(src_dir=dir,country=country,epochs =epoch,hiddenlayers=hiddenlayers)
+	
+def test(country,dir,span):
+	KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test_country_ensemble(src_dir=dir,country=country,span=span,margin=4)
+	return (KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country)
+	
+def forecast(country,dir,span):
+	forecast=forecast_country_cases(src_dir=dir,country=country,span=span)
+	return (forecast)
+		
+	
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Set the run parameters.')
 	parser.add_argument('--run', type=str, help='Specify function to run {getdata,train,test,forecast}')
@@ -15,23 +36,20 @@ if __name__ == '__main__':
 	args = vars(parser.parse_args())
 	
 	if args['run'] == 'getdata':
-		if args['country'] == 'USA':
-			fetch_usa_patientdata(args['dir'])
-		elif args['country'] == 'Italy':
-			fetch_italy_patientdata(args['dir'])
-		elif args['country'] == 'India':
-			fetch_india_patientdata(args['dir'])
+		getdata(args['country'],args['dir'])
+
 	elif args['run'] == 'train':
-		country_dataprep(args['dir'],country=args['country'],testspan=args['span'],channel = 2,minframe=10,margin=4,pixelsize=8)
-		train_country_ensemble(src_dir=args['dir'],country=args['country'],epochs =args['epoch'],hiddenlayers=args['hiddenlayers'])
+		train(args['country'],args['dir'],args['span'],args['epoch'],args['hiddenlayers'])
 		
 	elif args['run'] == 'test':
-		KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test_country_ensemble(src_dir=args['dir'],country=args['country'],span=args['span'],margin=4)
+		KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test(args['country'],args['dir'],args['span'])
 		return (KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country)
 		
 	elif args['run'] == 'forecast':
-		forecast=forecast_country_cases(src_dir=args['dir'],country=args['country'],span=args['span'])
+		forecast=forecast(args['country'], args['dir'],args['span'])
 		return (forecast)
 		
 	else:
 		print ("Unknown parameter given")
+		
+		
