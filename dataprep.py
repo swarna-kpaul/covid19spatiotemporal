@@ -202,7 +202,7 @@ def prep_us_data(M,N,frames_grid,minframe = 10,channel = 2, testspan = 8):
 		outdata.append((train,output,test,testoutput,test_gridday,fg))
 	return outdata
 	
-def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,margin=4,pixelsize=8)
+def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,margin=4,pixelsize=8):
 	if country == 'USA':
 		df_pop_pat = pd.read_csv(src_dir+"/USA_covid_data_final.csv")
 		counties = pd.read_csv(src_dir+"/us_counties.csv")

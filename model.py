@@ -294,7 +294,7 @@ def test_usa_ensemble(group_ensembles,indata,span,margin=4):
 def train_country_ensemble(src_dir,country,epochs = 1,hiddenlayers=2,ensembles=5,gamma = 0.6, channel = 2 , pixel = 16, filters = 32):
 	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
 		indata = pickle.load(filehandler)
-	if country = 'USA':
+	if country == 'USA':
 		ensemble = train_usa_ensemble(indata)
 		for group,ensemble_us in enumerate(ensemble):
 			save_ensemble(ensemble,src_dir,name='USA_group_'+str(group))
@@ -306,7 +306,7 @@ def train_country_ensemble(src_dir,country,epochs = 1,hiddenlayers=2,ensembles=5
 def test_country_ensemble(src_dir,country,span,margin=4):
 	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
 		indata = pickle.load(filehandler)
-	if country = 'USA':
+	if country == 'USA':
 		(train,output,test,testoutput,test_gridday,frames_grid) = indata[0]
 		if span > test_gridday[0][1]:
 			print("span should be less than ",test_gridday[0][1]+1)
