@@ -7,7 +7,7 @@ from zipfile import ZipFile
 import pandasql as ps
 import requests
 import json
-
+import pkg_resources
 
 ## getProvinceBoundaryBox function is to get the cordinate details from Mapbox API for ITALY
 ## Parameter Needed - Province Name
@@ -27,9 +27,9 @@ def getProvinceBoundaryBox(provinceName):
 # The below function used to get the USA Patient Data Automatically from HARVARD DATABASE COVID Patient Database and will create a timeseries patient file along with population of the Area at county along with a USA County file
 ## Parameter Needed - Target Directory to save the File
 def fetch_us_patientdata(tgtdir):
-	url='https://dataverse.harvard.edu/api/access/datafile/3792860?format=original&gbrecs=true'
-	urllib.request.urlretrieve(url,tgtdir+'/us_county_confirmed_cases.csv')
-	latest_data = pd.read_csv(tgtdir+'/us_county_confirmed_cases.csv')
+	url='https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/HIDLTK/7NWUDK'
+	urllib.request.urlretrieve(url,tgtdir+'/us_county_confirmed_cases.tab')
+	latest_data = pd.read_csv(tgtdir+'/us_county_confirmed_cases.tab',sep='\t')
 	allcols = list(latest_data.columns)
 	datecols = allcols[allcols.index('HHD10')+1:]
 	latest_data = latest_data[['COUNTY', 'NAME']+datecols]
@@ -161,7 +161,7 @@ def fetch_china_patientdata(tgtdir):
 	full_data = pd.merge(latest_data_Normalized, china_provinces, on=['city', 'Province'])
 	full_data = full_data[['city', 'Province', 'Date', 'Total Patient Count', 'lat', 'long']]
 	full_data.columns = ['city', 'Province', 'data_date', 'no_pat', 'lat', 'long']
-	china_pop_data = pd.read_excel('data/China_Population_Data.xlsx')
+	china_pop_data = load_support_data('China_Population_Data.xlsx','xl')
 	china_pop_data['Province'] = china_pop_data['Province'].apply(lambda x: x.split('[')[0])
 	full_data = ps.sqldf(
 		''' select a.*,b.Population pop from full_data a left join china_pop_data b on a.Province = b.Province ''',
@@ -173,6 +173,14 @@ def fetch_china_patientdata(tgtdir):
 	full_data.to_csv(tgtdir+'China_covid_data_final.csv', index=False)
 	print(' China Patient Data Created under Directory :' + tgtdir)
 
+def load_support_data(filename,type = 'xl'):
+    # This is a stream-like object. If you want the actual info, call
+    # stream.read()
+	stream = pkg_resources.resource_stream(__name__, 'data/'+filename)
+	if type == 'xl':
+		return pd.read_excel(stream)
+	elif type == 'csv':
+		return pd.read_csv(stream)
 
 ## The below function will give us the Patient count along with population in timeseries manner for ITALY provinces along with County file
 ## Parameter Needed - Target Directory to save the File
@@ -193,10 +201,10 @@ def fetch_italy_patientdata(tgtdir):
 			each_lat_long_df = {}
 			each_lat_long_df['ProvinceName'] = [Unique_Provinces[i]]
 			Cordinates = getProvinceBoundaryBox(Unique_Provinces[i])
-			shapelat = (Cordinates[1] + Cordinates[3]) / 2
-			shapelong = (Cordinates[0]+ Cordinates[2]) / 2
-			each_lat_long_df['lat'] = [shapelat]
-			each_lat_long_df['long'] = [shapelong]
+			each_lat_long_df['minlong'] = [Cordinates[0]]
+			each_lat_long_df['minlat'] = [Cordinates[1]]
+			each_lat_long_df['maxlong'] = [Cordinates[2]]
+			each_lat_long_df['maxlat'] = [Cordinates[3]]
 			each_lat_long_df = pd.DataFrame.from_dict(each_lat_long_df)
 			lat_long_df = lat_long_df.append(each_lat_long_df)
 
@@ -211,7 +219,7 @@ def fetch_italy_patientdata(tgtdir):
 	for eachDate in Dates_in_Data:
 		for eachRegion in Regions_in_Data:
 			full_region_data = full_data[(full_data['data_date'] == eachDate) & (full_data['RegionName'] == eachRegion)]
-			no_of_province = len(full_region_data['ProvinceName'].iloc[:,0]..unique()) - 1
+			no_of_province = len(full_region_data['ProvinceName'].iloc[:,0].unique()) - 1
 			try:
 				UnIdentified = full_region_data[full_region_data['lat'] == 0.000000]['no_pat'].values[0]
 			except:
@@ -223,7 +231,7 @@ def fetch_italy_patientdata(tgtdir):
 
 			final_Data = final_Data.append(full_region_data)
 
-	Population_Data = pd.read_excel('data/Italy_population_and_Estimates.xlsx')
+	Population_Data = load_support_data('Italy_population_and_Estimates.xlsx','xl')
 	Population_Data = Population_Data[Population_Data.Status.isin(['Province','Metropolitan City','Autonomous Province'])]
 	Population_Data_prov = Population_Data[['Name', 'Status', 'Population 2019']]
 	Population_Data_prov['Name'] = Population_Data_prov['Name'].apply(lambda x: x.strip())
@@ -248,14 +256,15 @@ def fetch_india_patientdata(tgtdir):
 	for eachRecord in India_Raw_Data:
 		each_record_df = pd.DataFrame(eachRecord, index=[0])
 		India_full_Data = India_full_Data.append(each_record_df)
-
+		
 	India_full_Data = India_full_Data[India_full_Data['detectedstate'] != '']
+	India_full_Data['dateannounced'] = pd.to_datetime(India_full_Data['dateannounced'])
 	India_full_Data['no_pat'] = 1
 	India_full_Data = ps.sqldf(
-		''' select detecteddistrict,detectedstate,sum("no_pat") as "no_pat" from India_full_Data group by detecteddistrict,detectedstate''',
+		''' select detecteddistrict,detectedstate,dateannounced data_date,sum("no_pat") as "no_pat" from India_full_Data group by detecteddistrict,detectedstate,dateannounced''',
 		locals())
 
-	lat_long_df = pd.read_csv('data/India_District_Wise_Population_Data_with_Lat_Long.csv')
+	lat_long_df = load_support_data('India_District_Wise_Population_Data_with_Lat_Long.csv','csv')
 	lat_long_df['detecteddistrict'] = lat_long_df['detecteddistrict'].apply(lambda x: x.strip())
 	lat_long_df['detectedstate'] = lat_long_df['detectedstate'].apply(lambda x: x.strip())
 
@@ -283,6 +292,8 @@ def fetch_india_patientdata(tgtdir):
 				state_data_valid.iloc[0, 2] = state_data_valid.iloc[0, 2] + Total_untagged_Patients
 
 			else:
+				if number_of_Missing_district == 0 :
+					number_of_Missing_district = 1
 				Patient_distribution = int(round(Total_untagged_Patients / number_of_Missing_district))
 				for eachdistrict in missing_districts:
 					district_dist_df = {}
