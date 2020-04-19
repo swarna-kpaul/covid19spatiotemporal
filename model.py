@@ -129,7 +129,7 @@ def convert_image_to_data(image,margin,sus_pop):
 	frame = np.round(frame,0)
 	return (frame,popexists_size)
 	
-def forecast(ensemble,input_sequence,frames_grid,span):	
+def forecast(ensemble,input_sequence,frames_grid,test_gridday,span,margin=4):	
 	pix = np.int(np.sqrt(max(frames_grid['pixno'])))
 	gridpix = np.flip(np.array(range(1,max(frames_grid['pixno'])+1)).reshape(pix,pix),0)
 	gridpix = gridpix[margin:pix-margin,margin:pix-margin]
@@ -245,7 +245,7 @@ def test_ensemble(ensemble,test,testoutput,test_gridday,frames_grid,span=5,margi
 	_errorframe['actual'] =  _errorframe['actual']+_errorframe['no_pat']
 	_errorframe['predict'] =  _errorframe['predict']+_errorframe['no_pat']
 	_errorframe['actual_denom'] = _errorframe['actual']
-	_errorframe[_errorframe['actual_denom']<1]['actual_denom'] = 1
+	_errorframe.loc[(_errorframe['actual_denom']<1),['actual_denom']] = 1
 	KL_div = entropy( softmax(_errorframe['predict']), softmax(_errorframe['actual']) )
 	MAPE = (np.sum(np.absolute((_errorframe['actual']-_errorframe['predict'])/np.array(_errorframe['actual_denom'])))/len(_errorframe))
 	cumulative_predicttotal_day,MAPE_countrytotal = predict_countrytotal(frames_grid,span,predicttotal,margin)
@@ -292,11 +292,11 @@ def test_usa_ensemble(group_ensembles,indata,span,margin=4):
 
 def train_country_ensemble(src_dir,country,epochs = 1,hiddenlayers=2,ensembles=5,gamma = 0.6, channel = 2 , pixel = 16, filters = 32):
 	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
-		indata = pickle.load(filehandler)
+		indata,df_pixel_county = pickle.load(filehandler)
 	if country == 'USA':
 		ensemble = train_usa_ensemble(indata,epochs)
 		for group,ensemble_us in enumerate(ensemble):
-			save_ensemble(ensemble,src_dir,name='USA_group_'+str(group))
+			save_ensemble(ensemble_us,src_dir,name='USA_group_'+str(group))
 	else:
 		(train,output,test,testoutput,test_gridday,frames_grid) = indata
 		ensemble = train_ensemble(train,output, hiddenlayers = hiddenlayers,epochs = epochs,ensembles=ensembles,gamma=gamma,channel=channel,pixel=pixel,filters=filters)
@@ -304,7 +304,7 @@ def train_country_ensemble(src_dir,country,epochs = 1,hiddenlayers=2,ensembles=5
 		
 def test_country_ensemble(src_dir,country,span,margin=4):
 	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
-		indata = pickle.load(filehandler)
+		indata,df_pixel_county = pickle.load(filehandler)
 	if country == 'USA':
 		(train,output,test,testoutput,test_gridday,frames_grid) = indata[0]
 		if span > test_gridday[0][1]:
@@ -323,16 +323,28 @@ def test_country_ensemble(src_dir,country,span,margin=4):
 		KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test_ensemble(ensemble,test,testoutput,test_gridday,frames_grid,span=span,margin=margin)
 	return (KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country)
 
-def forecast_country_cases(src_dir,country,span=5):
+def forecast_country_cases(src_dir,country,span=5,margin=4):
 	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
-		indata = pickle.load(filehandler)
+		indata,df_pixel_county = pickle.load(filehandler)
+	counties = pd.read_csv(src_dir+country+"_counties.csv")
 	forecast_frame = pd.DataFrame()
 	if country == 'USA':
+
 		for group, (train,output,test,testoutput,test_gridday,frames_grid) in enumerate(indata):
 			ensemble = load_ensemble('USA_group_'+str(group),src_dir)
-			forecast_frame.append(forecast(ensemble,test,frames_grid,span))
+			forecast_frame = forecast_frame.append(forecast(ensemble,test,frames_grid,test_gridday,span,margin))
 	else:
+
 		(train,output,test,testoutput,test_gridday,frames_grid) = indata
 		ensemble = load_ensemble(country,src_dir)
-		forecast_frame = forecast(ensemble,test,frames_grid,span)
+		forecast_frame = forecast(ensemble,test,frames_grid,test_gridday,span,margin)
+	forecast_frame = ps.sqldf("""select a.*, b.day, a.ratio*b.predict predicted from df_pixel_county join forecast_frame on a.grid = b.grid and a.pixno = b.pixno """,locals())
+	if country == 'USA':
+		forecast_frame['total_pat'] = forecast_frame.groupby(['cfips'])['predicted'].apply(lambda x: x.cumsum())
+	elif country == 'Italy':
+		forecast_frame['total_pat'] = forecast_frame.groupby(['ProvinceName','RegionName'])['predicted'].apply(lambda x: x.cumsum())
+	elif country == 'India':
+		forecast_frame['total_pat'] = forecast_frame.groupby(['District','State'])['predicted'].apply(lambda x: x.cumsum())
+	
+	forecast_frame.loc[:,['total_pat']] = forecast_frame['total_pat'] +forecast_frame['no_pat']
 	return forecast_frame

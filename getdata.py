@@ -77,7 +77,7 @@ def fetch_us_patientdata(tgtdir):
 	full_data['no_pat'] = full_data.groupby(['cfips'])['no_pat'].apply(lambda x: x.cummax())
 	full_data['new_pat'] = full_data.groupby(['lat','long'])['no_pat'].diff()
 	full_data = full_data.dropna()
-	us_counties.to_csv(tgtdir+'us_counties.csv',index=False)
+	us_counties.to_csv(tgtdir+'USA_counties.csv',index=False)
 	full_data.to_csv(tgtdir+'USA_covid_data_final.csv',index=False)
 	print(' USA Patient Data Created under Directory :'+tgtdir)
 
@@ -317,5 +317,5 @@ def fetch_india_patientdata(tgtdir):
 	India_district.columns = ['District', 'State', 'lat', 'long', 'pop']
 	India_Final_Merge_Data['no_pat'] = India_Final_Merge_Data.groupby(['State','District'])['new_pat'].apply(lambda x: x.cumsum())
 	India_Final_Merge_Data.to_csv(tgtdir + '/India_Covid_Patient.csv', index=False)
-	India_district.to_csv(tgtdir + '/India_district.csv', index=False)
+	India_district.to_csv(tgtdir + '/India_counties.csv', index=False)
 	print(' India Patient Data Created under Directory :' + tgtdir)

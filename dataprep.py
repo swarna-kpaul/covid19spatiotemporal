@@ -202,34 +202,75 @@ def prep_us_data(M,N,frames_grid,minframe = 10,channel = 2, testspan = 8):
 		(train,output,test,testoutput,test_gridday) = prep_image(fg,minframe=minframe,channel =channel, testspan=testspan)
 		outdata.append((train,output,test,testoutput,test_gridday,fg))
 	return outdata
-	
+
+# """Compute softmax values for each sets of scores in x."""
+def softmax(x):
+	if np.max(x) > 1:
+		e_x = np.exp(x/np.max(x))
+	else:
+		e_x = np.exp(x - np.max(x))
+	return e_x / e_x.sum()
+
+
+
 def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,margin=4,pixelsize=8):
+	pix = pixelsize+2*margin
+	gridpix = np.flip(np.array(range(1,pix**2+1)).reshape(pix,pix),0)
+	gridpix = gridpix[margin:pix-margin,margin:pix-margin].flatten()
+
 	if country == 'USA':
 		df_pop_pat = pd.read_csv(src_dir+"/USA_covid_data_final.csv")
-		counties = pd.read_csv(src_dir+"/us_counties.csv")
+		counties = pd.read_csv(src_dir+"/USA_counties.csv")
 		df_pop_pat = df_pop_pat[df_pop_pat['data_date']>20200307]
+		_df_pop_pat = df_pop_pat.groupby(['cfips'])['new_pat'].sum().reset_index()
 		area=(23, 49,-124.5, -66.31)
 		M=18
 		N=30
+		Area_df = get_The_Area_Grid(area,M,N,margin=margin,pixelsize=pixelsize,counties=counties)
+		_df_area_county = ps.sqldf("""select b.cfips, b.county,b.lat,b.long,b.pop,ifnull(c.new_pat,0) no_pat from counties b 
+								left outer join _df_pop_pat c on b.cfips = c.cfips""",locals())
+		df_pixel_county = ps.sqldf("""select a.grid,a.pixno,d.cfips cfips,d.county county,d.no_pat, d.pop from Area_df a 
+									join _df_area_county d
+									on d.lat between a.minlat and a.maxlat and d.long between a.minlong and a.maxlong""",locals())
+		df_pixel_county = df_pixel_county[df_pixel_county['pixno'].isin(gridpix)]
+		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno','cfips','county'])['no_pat'].apply(lambda x: softmax(x))
 	elif country == 'Italy':
 		df_pop_pat = pd.read_csv(src_dir+"/Italy_Covid_Patient.csv")
 		counties = pd.read_csv(src_dir+"/Italy_counties.csv")
+		_df_pop_pat = df_pop_pat.groupby(['ProvinceName','RegionName'])['new_pat'].sum().reset_index()
 		area=(36.5, 47,6.61, 18.66)
 		M=7
 		N=6
+		Area_df = get_The_Area_Grid(area,M,N,margin=margin,pixelsize=pixelsize,counties=counties)
+		_df_area_county = ps.sqldf("""select b.ProvinceName, c.RegionName,b.lat,b.long,b.pop,ifnull(c.new_pat,0) no_pat from counties b 
+								left outer join _df_pop_pat c on b.ProvinceName = c.ProvinceName""",locals())
+		df_pixel_county = ps.sqldf("""select a.grid,a.pixno,d.ProvinceName province,d.RegionName region,d.no_pat, d.pop from Area_df a 
+									join _df_area_county d
+									on d.lat between a.minlat and a.maxlat and d.long between a.minlong and a.maxlong""",locals())
+		df_pixel_county = df_pixel_county[df_pixel_county['pixno'].isin(gridpix)]
+		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno','province','region'])['no_pat'].apply(lambda x: softmax(x))
 	elif country == 'India':
 		df_pop_pat = pd.read_csv(src_dir+"/India_Covid_Patient.csv")
-		counties = pd.read_csv(src_dir+"/India_district.csv")
+		counties = pd.read_csv(src_dir+"/India_counties.csv")
+		_df_pop_pat = df_pop_pat.groupby(['District','State'])['new_pat'].sum().reset_index()
 		area=(6.665, 36.91,68, 97.77)
 		M=21
 		N=18
-	Area_df = get_The_Area_Grid(area,M,N,margin=margin,pixelsize=pixelsize,counties=counties)
+		Area_df = get_The_Area_Grid(area,M,N,margin=margin,pixelsize=pixelsize,counties=counties)
+		_df_area_county = ps.sqldf("""select b.District, b.State,b.lat,b.long,b.pop,ifnull(c.new_pat,0) no_pat from counties b 
+								left outer join _df_pop_pat c on b.ProvinceName = c.ProvinceName""",locals())
+		df_pixel_county = ps.sqldf("""select a.grid,a.pixno,d.District District,d.State State,d.no_pat, d.pop from Area_df a 
+									join _df_area_county d
+									on d.lat between a.minlat and a.maxlat and d.long between a.minlong and a.maxlong""",locals())
+		df_pixel_county = df_pixel_county[df_pixel_county['pixno'].isin(gridpix)]
+		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno','District','State'])['no_pat'].apply(lambda x: softmax(x))
+	
 	frames_grid = frames_df(df_pop_pat,Area_df)
-
+	
 	if country == 'USA':
 		data = prep_us_data(M,N,frames_grid,minframe = minframe,channel = channel, testspan = testspan)
 	else:
 		(train,output,test,testoutput,test_gridday) = prep_image(frames_grid,minframe=minframe,channel =channel, testspan=testspan)
 		data = (train,output,test,testoutput,test_gridday,frames_grid)
 	with open(src_dir+country+"prepdata.pkl", 'wb') as filehandler:
-		pickle.dump(data,filehandler)
+		pickle.dump((data,df_pixel_county),filehandler)
