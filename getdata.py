@@ -282,6 +282,7 @@ def fetch_india_patientdata(tgtdir):
 			
 	unique_States = India_Full_Merge_Data['detectedstate'].unique()
 	India_Final_Merge_Data = India_Full_Merge_Data[India_Full_Merge_Data['pop']>0]#pd.DataFrame()
+	########### distribute missing district data in same historical distribution per state
 	for eachState in unique_States:
 		#print(eachState)
 		state_dist_ratio = India_Full_Merge_Data[(India_Full_Merge_Data['detectedstate'] == eachState)
