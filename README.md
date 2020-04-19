@@ -4,7 +4,7 @@ The high R-naught factor of SARS-CoV-2 has created a race against time for manki
 
 Modelling can also be done for India
 
-## Running and example
+## Running an example
 To fetch latest data for a country run the following
 ```
 python main.py --run getdata --country India --dir /home/covid19data/
