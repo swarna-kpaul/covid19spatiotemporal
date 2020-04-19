@@ -229,6 +229,6 @@ def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,
 		data = prep_us_data(M,N,frames_grid,minframe = minframe,channel = channel, testspan = testspan)
 	else:
 		(train,output,test,testoutput,test_gridday) = prep_image(frames_grid,minframe=minframe,channel =channel, testspan=testspan)
-		data = (train,output,test,testoutput,test_gridday)
+		data = (train,output,test,testoutput,test_gridday,frames_grid)
 	with open(src_dir+country+"prepdata.pkl", 'wb') as filehandler:
 		pickle.dump(data,filehandler)

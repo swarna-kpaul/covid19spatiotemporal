@@ -90,10 +90,10 @@ def train_ensemble(train,output, hiddenlayers = 3,epochs = 20,ensembles=5,gamma 
 	return ((ensemble_models,ensemble_weights))
 
 ################# Train ensemble with USA data ###########################
-def train_usa_ensemble(indata):
+def train_usa_ensemble(indata,epochs=30):
 	group_ensembles = []
 	for (train,output,test,testoutput,test_gridday,frames_grid) in indata:
-		ensemble_us = train_ensemble(train,output,hiddenlayers=2,channel =2,epochs = 30, gamma = 0.6, ensembles = 5)
+		ensemble_us = train_ensemble(train,output,hiddenlayers=2,channel =2,epochs = epochs, gamma = 0.6, ensembles = 5)
 		group_ensembles.append(ensemble_us)
 	return group_ensembles
 
@@ -116,7 +116,6 @@ def merge_ensemble(ensemble_list):
 	ensemble_weights = softmax(np.array(ensemble_weights))
 	return ((ensemble_models,ensemble_weights))
 	
-	
 ########## Convert image pixel values to number of infection cases ########
 def convert_image_to_data(image,margin,sus_pop):  
 	frame = image
@@ -130,6 +129,38 @@ def convert_image_to_data(image,margin,sus_pop):
 	frame = np.round(frame,0)
 	return (frame,popexists_size)
 	
+def forecast(ensemble,input_sequence,frames_grid,span):	
+	pix = np.int(np.sqrt(max(frames_grid['pixno'])))
+	gridpix = np.flip(np.array(range(1,max(frames_grid['pixno'])+1)).reshape(pix,pix),0)
+	gridpix = gridpix[margin:pix-margin,margin:pix-margin]
+	forecastframe = pd.DataFrame()
+	for k,(grid,_filler) in test_gridday.items():
+		track = input_sequence[k]
+		totpop = track[0,::,::,1:] 
+		pix = totpop.shape[0]
+		pred_sus_pop = frames_grid[(frames_grid['grid'] ==grid) & (frames_grid['day'] <=(max(frames_grid['day'])-span))]
+		pred_sus_pop = pred_sus_pop.groupby(['pixno'])[['no_pat','pop']].max()
+		pred_sus_pop = 	np.array(pred_sus_pop['pop']) -np.array(pred_sus_pop['no_pat'])
+		pred_sus_pop = np.flip(pred_sus_pop.reshape(pix,pix),0)[margin:pix-margin,margin:pix-margin]
+		popexists = pickle.loads(pickle.dumps(totpop[::,::,0],-1))
+		popexists[popexists>0] = 1
+		######## for each prediction day
+		for i in range(span):
+			new_pos = ensemble_predict(ensemble,track[np.newaxis, ::, ::, ::, ::])
+			new = new_pos[::, -1, ::, ::, ::]
+			new = np.multiply(new[0,::,::,0],popexists)[np.newaxis,::,::,np.newaxis]
+			newtrack = np.concatenate((new,totpop[np.newaxis,::,::,::]),axis = 3)
+			track = np.concatenate((track, newtrack), axis=0)
+			predictframe,popexists_size = convert_image_to_data(np.squeeze(new,0)[::,::,0],margin,pred_sus_pop)
+			predictframe = np.round(predictframe,0)
+			pred_sus_pop = pred_sus_pop - predictframe
+			pred_sus_pop[pred_sus_pop<0] = 0
+			_forecastframe = pd.DataFrame({'pixno':gridpix[pred_sus_pop>0].flatten(), 'predict':predictframe[pred_sus_pop>0].flatten()}) 
+			_forecastframe['day'] = i
+			_forecastframe['grid'] = grid   
+			forecastframe = forecastframe.append(_forecastframe)   		
+	return forecastframe
+		
 
 ################## Test an ensemble model ###########################
 def validate(ensemble,test,testout,test_gridday,frames_grid,margin):
@@ -204,13 +235,12 @@ def validate(ensemble,test,testout,test_gridday,frames_grid,margin):
 	averageerror = errorsum/cnt
 	return (averageerror,predicttotal,averagetotalerror,errorframe)
 	
-
 ############ Test ensemble model foor Italy ####################
-def test_italy_ensemble(it_ensembles,test,testoutput,test_gridday,frames_grid,span=5,margin=4):
+def test_ensemble(ensemble,test,testoutput,test_gridday,frames_grid,span=5,margin=4):
 	test_gridday_span = {}
 	for i,v in test_gridday.items():
 		test_gridday_span[i] = (v[0],span)
-	averageerror,predicttotal,averagetotalerror,errorframe = validate(it_ensembles,test,testoutput,test_gridday_span,frames_grid,margin)
+	averageerror,predicttotal,averagetotalerror,errorframe = validate(ensemble,test,testoutput,test_gridday_span,frames_grid,margin)
 	_errorframe=errorframe.groupby(['grid','pixno']).sum().reset_index()
 	_errorframe=pd.merge(_errorframe,frames_grid[frames_grid['day'] == max(frames_grid['day']) -testoutput.shape[1]][['grid','pixno','no_pat']],on = ['grid','pixno'])
 	_errorframe['actual'] =  _errorframe['actual']+_errorframe['no_pat']
@@ -260,4 +290,50 @@ def test_usa_ensemble(group_ensembles,indata,span,margin=4):
 	MAPE = (np.sum(np.absolute((_errorframe['actual']-_errorframe['predict'])/np.array(_errorframe['actual_denom'])))/len(_errorframe))
 	cumulative_predicttotal_day,MAPE_countrytotal = predict_countrytotal(frames_grid_country,span,predicttotal_country,margin)
 	return (KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country)
+
+def train_country_ensemble(src_dir,country,epochs = 1,hiddenlayers=2,ensembles=5,gamma = 0.6, channel = 2 , pixel = 16, filters = 32):
+	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
+		indata = pickle.load(filehandler)
+	if country = 'USA':
+		ensemble = train_usa_ensemble(indata)
+		for group,ensemble_us in enumerate(ensemble):
+			save_ensemble(ensemble,src_dir,name='USA_group_'+str(group))
+	else:
+		(train,output,test,testoutput,test_gridday,frames_grid) = indata
+		ensemble = train_ensemble(train,output, hiddenlayers = hiddenlayers,epochs = epochs,ensembles=ensembles,gamma=gamma,channel=channel,pixel=pixel,filters=filters)
+		save_ensemble(ensemble,src_dir,name=country)
 		
+def test_country_ensemble(src_dir,country,span,margin=4):
+	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
+		indata = pickle.load(filehandler)
+	if country = 'USA':
+		(train,output,test,testoutput,test_gridday,frames_grid) = indata[0]
+		if span > test_gridday[0][1]:
+			print("span should be less than ",test_gridday[0][1]+1)
+			raise
+		ensemble = []
+		for i in range(len(indata)):
+			ensemble.append(load_ensemble('USA_group_'+str(i),src_dir))
+		KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test_usa_ensemble(ensemble,indata,span,margin)
+	else:
+		(train,output,test,testoutput,test_gridday,frames_grid) = indata
+		ensemble = load_ensemble(country,src_dir)
+		if span > test_gridday[0][1]:
+			print("span should be less than ",test_gridday[0][1]+1)
+			raise
+		KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test_ensemble(ensemble,test,testoutput,test_gridday,frames_grid,span=span,margin)
+	return (KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country)
+
+def forecast_country_cases(src_dir,country,span=5):
+	with open(src_dir+country+'prepdata.pkl', 'rb') as filehandler:
+		indata = pickle.load(filehandler)
+	forecast_frame = pd.DataFrame()
+	if country == 'USA':
+		for group, (train,output,test,testoutput,test_gridday,frames_grid) in enumerate(indata):
+			ensemble = load_ensemble('USA_group_'+str(group),src_dir)
+			forecast_frame.append(forecast(ensemble,test,frames_grid,span))
+	else:
+		(train,output,test,testoutput,test_gridday,frames_grid) = indata
+		ensemble = load_ensemble(country,src_dir)
+		forecast_frame = forecast(ensemble,test,frames_grid,span)
+	return forecast_frame
