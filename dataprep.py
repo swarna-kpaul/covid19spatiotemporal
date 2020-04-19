@@ -5,8 +5,8 @@ import pandasql as ps
 import matplotlib.pyplot as plt
 ## Function to divide the GRID Area into Pixels
 ## Parameter Needed - 1. pixlatmax - float - Maximum Value of Lattitude( GRID Boundary) 2. pixlatmin - float - Minimum value of the lattitudes( GRID Boundary)
-##					  3. pixlonmax - float - Maximum value of Longitude( GRID Boundary) 4. pixlonmin - float - Minimum value of longitude( GRID Boundary)
-##					  5. pixelsize - Number - Size of Earch Pixel in GRID(Number of Pixel in Grid)	6. Grid No - Number - The Id of Grid
+##						3. pixlonmax - float - Maximum value of Longitude( GRID Boundary) 4. pixlonmin - float - Minimum value of longitude( GRID Boundary)
+##						5. pixelsize - Number - Size of Earch Pixel in GRID(Number of Pixel in Grid)	6. Grid No - Number - The Id of Grid
 
 def GetPixelDF(pixlatmin,pixlatmax,pixlonmin,pixlonmax,pixelsize,grid_no):
 	fact=100000000
@@ -36,9 +36,9 @@ def GetPixelDF(pixlatmin,pixlatmax,pixlonmin,pixlonmax,pixelsize,grid_no):
 	return ret_df
 
 ## Function to divide the whole country into GRIDS and Pixels
-## Parameter Needed - 1. latlongrange - Tuple -  Coordinate boundary of the country(south, north, west, east) 2. latstep - number -Number of division under lattitude range
-##					  3. longstep - Number - Number of division under longitude range  4. margin - Number - Overlapping adjustment for pixel boundaries
-##					  5. pixelsize - Number - Pixelsize of each subpixel	6. counties - Dataframe - The county Dataframe containing the lattitude longitude and population data
+## Parameter Needed - 1. latlongrange - Tuple -	Coordinate boundary of the country(south, north, west, east) 2. latstep - number -Number of division under lattitude range
+##						3. longstep - Number - Number of division under longitude range	4. margin - Number - Overlapping adjustment for pixel boundaries
+##						5. pixelsize - Number - Pixelsize of each subpixel	6. counties - Dataframe - The county Dataframe containing the lattitude longitude and population data
 
 def get_The_Area_Grid(latlongrange,latstep,longstep,margin,pixelsize, counties):
 	fact=100000000
@@ -59,7 +59,7 @@ def get_The_Area_Grid(latlongrange,latstep,longstep,margin,pixelsize, counties):
 		longitudes.append(max_long/fact)
 	print(len(lattitudes),len(longitudes))
 	#print(longitudes)
-	Area_Grid =  {}
+	Area_Grid =	{}
 	Area_pixel_Grid = pd.DataFrame()
 	
 	Area_Grid['lattitudes'] = lattitudes
@@ -96,7 +96,7 @@ def validate_frames(frames_grid,df_pop_pat,margin):
 	print(np.sum(frames_grid[frames_grid['pixno'].isin(a)]['new_pat']))
 
 ## Creates the Frame DF from Area DF and Patient Data
-## Parameter Needed - 1. df_pop_pat - Dataframe - country specific pixel level patient and population data for country 2. Area_df - DataFrame-  Pixel level coridnate data with population for each pixel
+## Parameter Needed - 1. df_pop_pat - Dataframe - country specific pixel level patient and population data for country 2. Area_df - DataFrame-	Pixel level coridnate data with population for each pixel
 def frames_df(df_pop_pat,Area_df):
 	days = ps.sqldf("select distinct data_date from df_pop_pat order by 1",locals())
 	days['day'] = np.arange(len(days))
@@ -172,7 +172,7 @@ def prep_image(frames_grid,minframe,testspan=4,channel = 1, extframes = []):
 		train_samp = np.array(train_samp)
 		output_samp = np.array(output_samp)
 		if train_samp.shape[0]< minframe:
-			continue  
+			continue	
 		test.append(np.flip(train_samp[testspan:minframe+testspan,::,::,::],0))
 		testoutput.append(np.flip(output_samp[:testspan,::,::,::],0))
 		test_gridday[testseq] = (grid,testspan)
@@ -201,3 +201,34 @@ def prep_us_data(M,N,frames_grid,minframe = 10,channel = 2, testspan = 8):
 		(train,output,test,testoutput,test_gridday) = prep_image(fg,minframe=minframe,channel =channel, testspan=testspan)
 		outdata.append((train,output,test,testoutput,test_gridday,fg))
 	return outdata
+	
+def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,margin=4,pixelsize=8)
+	if country == 'USA':
+		df_pop_pat = pd.read_csv(src_dir+"/USA_covid_data_final.csv")
+		counties = pd.read_csv(src_dir+"/us_counties.csv")
+		df_pop_pat = df_pop_pat[df_pop_pat['data_date']>20200307]
+		area=(23, 49,-124.5, -66.31)
+		M=18
+		N=30
+	elif country == 'Italy':
+		df_pop_pat = pd.read_csv(src_dir+"/Italy_Covid_Patient.csv")
+		counties = pd.read_csv(src_dir+"/Italy_counties.csv")
+		area=(36.5, 47,6.61, 18.66)
+		M=7
+		N=6
+	elif country == 'India':
+		df_pop_pat = pd.read_csv(src_dir+"/India_Covid_Patient.csv")
+		counties = pd.read_csv(src_dir+"/India_district.csv")
+		area=(6.665, 36.91,68, 97.77)
+		M=21
+		N=18
+	Area_df = get_The_Area_Grid(area,M,N,margin=margin,pixelsize=pixelsize,counties=counties)
+	frames_grid = frames_df(df_pop_pat,Area_df)
+
+	if country == 'USA':
+		data = prep_us_data(M,N,frames_grid,minframe = minframe,channel = channel, testspan = testspan)
+	else:
+		(train,output,test,testoutput,test_gridday) = prep_image(frames_grid,minframe=minframe,channel =channel, testspan=testspan)
+		data = (train,output,test,testoutput,test_gridday)
+	with open(src_dir+country+"prepdata.pkl", 'wb') as filehandler:
+		pickle.dump(data,filehandler)
