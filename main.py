@@ -1,4 +1,4 @@
-%tensorflow_version 1.x
+#%tensorflow_version 1.x
 from covid19spatiotemporal.dataprep import *
 from covid19spatiotemporal.model import *
 from covid19spatiotemporal.getdata import *
