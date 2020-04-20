@@ -43,11 +43,11 @@ if __name__ == '__main__':
 		
 	elif args['run'] == 'test':
 		KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test(args['country'],args['dir'],args['span'])
-		return (KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country)
+		print ("KL divergence:", KL_div, "Pixel MAPE:", MAPE,"Country MAPE:",MAPE_countrytotal)
 		
 	elif args['run'] == 'forecast':
 		forecast=forecast(args['country'], args['dir'],args['span'])
-		return (forecast)
+		print (forecast)
 		
 	else:
 		print ("Unknown parameter given")
