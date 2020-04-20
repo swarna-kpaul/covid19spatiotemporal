@@ -233,7 +233,7 @@ def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,
 									join _df_area_county d
 									on d.lat between a.minlat and a.maxlat and d.long between a.minlong and a.maxlong""",locals())
 		df_pixel_county = df_pixel_county[df_pixel_county['pixno'].isin(gridpix)]
-		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno','cfips','county'])['no_pat'].apply(lambda x: softmax(x))
+		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno'])['no_pat'].apply(lambda x: softmax(x))
 	elif country == 'Italy':
 		df_pop_pat = pd.read_csv(src_dir+"/Italy_Covid_Patient.csv")
 		counties = pd.read_csv(src_dir+"/Italy_counties.csv")
@@ -248,7 +248,7 @@ def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,
 									join _df_area_county d
 									on d.lat between a.minlat and a.maxlat and d.long between a.minlong and a.maxlong""",locals())
 		df_pixel_county = df_pixel_county[df_pixel_county['pixno'].isin(gridpix)]
-		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno','province','region'])['no_pat'].apply(lambda x: softmax(x))
+		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno'])['no_pat'].apply(lambda x: softmax(x))
 	elif country == 'India':
 		df_pop_pat = pd.read_csv(src_dir+"/India_Covid_Patient.csv")
 		counties = pd.read_csv(src_dir+"/India_counties.csv")
@@ -263,7 +263,7 @@ def country_dataprep(src_dir,country='USA',testspan = 8,channel = 2,minframe=10,
 									join _df_area_county d
 									on d.lat between a.minlat and a.maxlat and d.long between a.minlong and a.maxlong""",locals())
 		df_pixel_county = df_pixel_county[df_pixel_county['pixno'].isin(gridpix)]
-		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno','District','State'])['no_pat'].apply(lambda x: softmax(x))
+		df_pixel_county['ratio']=df_pixel_county.groupby(['grid','pixno'])['no_pat'].apply(lambda x: softmax(x))
 	
 	frames_grid = frames_df(df_pop_pat,Area_df)
 	
