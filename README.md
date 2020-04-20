@@ -4,6 +4,8 @@ The high R-naught factor of SARS-CoV-2 has created a race against time for manki
 
 Modelling can also be done for India
 
+tensorflow_version 1.x is required to run the code
+
 ## Running an example
 To fetch latest data for a country run the following
 ```
