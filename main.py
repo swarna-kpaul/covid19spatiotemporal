@@ -11,9 +11,9 @@ def getdata(country,dir):
 	elif country == 'India':
 		fetch_india_patientdata(dir)
 		
-def train(country,dir,span,epoch,hiddenlayers):
+def train(country,dir,span,epoch,hiddenlayers,ensembles=5):
 	country_dataprep(dir,country=country,testspan=span, channel = 2,minframe=10,margin=4,pixelsize=8)
-	train_country_ensemble(src_dir=dir,country=country,epochs =epoch,hiddenlayers=hiddenlayers)
+	train_country_ensemble(src_dir=dir,country=country,epochs =epoch,hiddenlayers=hiddenlayers,ensembles = ensembles)
 	
 def test(country,dir,span):
 	KL_div,MAPE,_errorframe,MAPE_countrytotal,cumulative_predicttotal_day,predicttotal_country = test_country_ensemble(src_dir=dir,country=country,span=span,margin=4)
