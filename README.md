@@ -13,7 +13,7 @@ python main.py --run getdata --country India --dir /home/covid19data/
 ```
 To train a model for a country run the following. Here the span is period of testing data. To use complete data for training span can be set to 0.
 ```
-python main.py --run train --country India --dir /home/covid19data/ --span 5 --hiddenlayers 3 --epoch 20
+python main.py --run train --country India --dir /home/covid19data/ --span 5 --hiddenlayers 1 --epoch 20
 ```
 To test the model run the following. Please make sure to keep the testing span same as that of training
 ```
